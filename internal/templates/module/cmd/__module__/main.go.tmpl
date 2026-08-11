@@ -1,0 +1,60 @@
+package main
+
+import (
+	"context"
+	"log"
+
+	"github.com/go-chi/chi/v5"
+
+{{- if eq .DB "bun"}}
+	"github.com/gp-system/dbx/bunx"
+{{- end}}
+	"github.com/gp-system/dbx/pg"
+	"github.com/gp-system/envconf"
+	"{{.Kit.Path}}/server"
+
+	{{.Module}}surfaces "{{.GoModule}}/internal/modules/{{.Module}}/surfaces"
+	"{{.GoModule}}/internal/platform/config"
+	// gpsystem:imports
+)
+
+func main() {
+	cfg := envconf.MustLoad[config.Config]()
+	ctx := context.Background()
+	pool := pg.MustNewPool(ctx, cfg.DB)
+	// gpsystem:pools
+
+	err := server.Run(ctx, cfg.Server, func(r chi.Router) error {
+		api := chi.NewRouter()
+{{- if .Auth}}
+		api.Use(server.IdentityMiddleware(cfg.JWT))
+{{- end}}
+		// gpsystem:api-middleware
+{{- if eq .DB "bun"}}
+		bunDB := bunx.Open(pool)
+{{- end}}
+		deps := {{.Module}}surfaces.Dependencies{
+{{- if eq .DB "bun"}}
+			DB:         bunDB,
+			Transactor: bunx.NewTransactor(bunDB),
+{{- else}}
+			DB:         pg.NewDB(pool),
+			Transactor: pg.NewTransactor(pool),
+{{- end}}
+			// gpsystem:dependencies-init
+		}
+		// gpsystem:registrations
+		r.Mount("/api/v1", api)
+		return nil
+	},
+		// gpsystem:middleware
+		// gpsystem:closers
+		server.WithCloser("pgxpool", func(context.Context) error {
+			pool.Close()
+			return nil
+		}),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+}

@@ -1,0 +1,23 @@
+package http
+
+import (
+	"context"
+	"errors"
+	"net/http"
+
+	gen "{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/http/gen"
+	"{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/http/mapper"
+	"{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/service"
+)
+
+// Register handles POST {{.BasePath}}/register.
+func (h *Handler) Register(ctx context.Context, req gen.RegisterRequest) (gen.RegisterResponse, error) {
+	user, err := h.svc.Register(ctx, req.Body.Name, req.Body.Email, req.Body.Password)
+	if errors.Is(err, service.ErrConflict) {
+		return gen.Register409JSONResponse(mapper.Problem(http.StatusConflict, "email already registered")), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return gen.Register201JSONResponse(mapper.ToUser(user)), nil
+}

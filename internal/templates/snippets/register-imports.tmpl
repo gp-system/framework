@@ -1,0 +1,8 @@
+"github.com/go-chi/chi/v5"
+{{.Surface}}http "{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/http"
+{{.GenPackage}} "{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/http/gen"
+{{.Surface}}policy "{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/policy"
+{{.Surface}}service "{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/service"
+kitpolicy "github.com/gp-system/auth/policy"
+"github.com/gp-system/httperr"
+"{{.Kit.Path}}/server"

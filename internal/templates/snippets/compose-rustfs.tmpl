@@ -1,0 +1,30 @@
+rustfs:
+  image: rustfs/rustfs:latest
+  command: server /data --console-address ":9001"
+  environment:
+    RUSTFS_ROOT_USER: ${S3_ACCESS_KEY}
+    RUSTFS_ROOT_PASSWORD: ${S3_SECRET_KEY}
+  volumes:
+    - rustfsdata:/data
+  networks:
+    - default
+    - proxynet
+  restart: unless-stopped
+  labels:
+    - traefik.enable=true
+    - traefik.http.routers.{{camel .Project}}Rustfs.rule=Host(`${RUSTFS_S3_HOST}`)
+    - traefik.http.routers.{{camel .Project}}Rustfs.entrypoints=web
+    - traefik.http.routers.{{camel .Project}}Rustfs.service={{camel .Project}}Rustfs
+    - traefik.http.routers.{{camel .Project}}RustfsSsl.rule=Host(`${RUSTFS_S3_HOST}`)
+    - traefik.http.routers.{{camel .Project}}RustfsSsl.entrypoints=websecure
+    - traefik.http.routers.{{camel .Project}}RustfsSsl.tls.certresolver=letsEncrypt
+    - traefik.http.routers.{{camel .Project}}RustfsSsl.service={{camel .Project}}Rustfs
+    - traefik.http.services.{{camel .Project}}Rustfs.loadbalancer.server.port=9000
+    - traefik.http.routers.{{camel .Project}}RustfsConsole.rule=Host(`${RUSTFS_CONSOLE_HOST}`)
+    - traefik.http.routers.{{camel .Project}}RustfsConsole.entrypoints=web
+    - traefik.http.routers.{{camel .Project}}RustfsConsole.service={{camel .Project}}RustfsConsole
+    - traefik.http.routers.{{camel .Project}}RustfsConsoleSsl.rule=Host(`${RUSTFS_CONSOLE_HOST}`)
+    - traefik.http.routers.{{camel .Project}}RustfsConsoleSsl.entrypoints=websecure
+    - traefik.http.routers.{{camel .Project}}RustfsConsoleSsl.tls.certresolver=letsEncrypt
+    - traefik.http.routers.{{camel .Project}}RustfsConsoleSsl.service={{camel .Project}}RustfsConsole
+    - traefik.http.services.{{camel .Project}}RustfsConsole.loadbalancer.server.port=9001

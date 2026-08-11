@@ -1,0 +1,58 @@
+{{.Module}}:
+  build:
+    context: .
+    dockerfile: Dockerfile
+    target: development
+    args:
+      CMD: {{.Module}}
+      USER_ID: "${USER_ID}"
+      GROUP_ID: "${GROUP_ID}"
+    {{- if .Kit.Replace}}
+    additional_contexts:
+      kit: {{.Kit.Replace}}
+      {{- if .Errs.Replace}}
+      errs: {{.Errs.Replace}}
+      {{- end}}
+      {{- range .Mods}}
+      {{- if .Replace}}
+      {{.Name}}: {{.Replace}}
+      {{- end}}
+      {{- end}}
+    {{- end}}
+  env_file: .env
+  environment:
+    OTEL_SERVICE_NAME: {{.Project}}-{{.Module}}
+  volumes:
+    - .:/src
+    {{- if .Kit.Replace}}
+    - {{.Kit.Replace}}:{{.Kit.Mount}}:ro
+    {{- end}}
+    {{- if .Errs.Replace}}
+    - {{.Errs.Replace}}:{{.Errs.Mount}}:ro
+    {{- end}}
+    {{- range .Mods}}
+    {{- if .Replace}}
+    - {{.Replace}}:{{.Mount}}:ro
+    {{- end}}
+    {{- end}}
+    - gomodcache:/gomodcache
+    - gocache:/gocache
+  depends_on:
+    postgres:
+      condition: service_healthy
+    valkey:
+      condition: service_started
+    migrate:
+      condition: service_completed_successfully
+  networks:
+    - default
+    - proxynet
+  restart: unless-stopped
+  labels:
+    - traefik.enable=true
+    - traefik.http.routers.{{camel .Project}}{{pascal .Module}}.rule=Host(`${APP_HOST}`) && PathRegexp(`^/api/v1/([a-z0-9-]+/)?{{.Module}}(/|$)`)
+    - traefik.http.routers.{{camel .Project}}{{pascal .Module}}.entrypoints=web
+    - traefik.http.routers.{{camel .Project}}{{pascal .Module}}Ssl.rule=Host(`${APP_HOST}`) && PathRegexp(`^/api/v1/([a-z0-9-]+/)?{{.Module}}(/|$)`)
+    - traefik.http.routers.{{camel .Project}}{{pascal .Module}}Ssl.entrypoints=websecure
+    - traefik.http.routers.{{camel .Project}}{{pascal .Module}}Ssl.tls.certresolver=letsEncrypt
+    - traefik.http.services.{{camel .Project}}{{pascal .Module}}.loadbalancer.server.port=3000

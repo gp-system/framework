@@ -1,0 +1,13 @@
+package jobs
+
+import (
+	"context"
+
+	{{.Module}}surfaces "{{.GoModule}}/internal/modules/{{.Module}}/surfaces"
+)
+
+func {{camel .Job}}(deps {{.Module}}surfaces.Dependencies) func(context.Context) error {
+	return func(ctx context.Context) error {
+		return nil
+	}
+}

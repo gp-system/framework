@@ -1,0 +1,171 @@
+// Package social bridges markbates/goth's provider-agnostic OAuth2 clients
+// with the {{.Module}} module's account model. It needs no server-side
+// session between the /social/{provider} begin request and its callback:
+// the OAuth state parameter is a signed, self-verifying token (see sign/
+// verify below), reusing the module's own JWT secret rather than
+// introducing a second one.
+//
+// Add another provider in providers.go; this file never changes.
+package social
+
+import (
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"net/url"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/markbates/goth"
+)
+
+// ExternalUser normalizes the subset of goth.User every provider fills in
+// well enough to find-or-create a local account.
+type ExternalUser struct {
+	Provider    string
+	ProviderKey string // stable external id, goth.User.UserID
+	Email       string
+	Name        string
+	AvatarURL   string
+}
+
+// Registry holds the goth providers this module knows about, keyed by the
+// {provider} path segment used in /social/{provider} and
+// /social/{provider}/callback.
+type Registry struct {
+	providers map[string]goth.Provider
+	stateKey  []byte
+	stateTTL  time.Duration
+}
+
+// NewRegistry builds an empty registry; call Register (from providers.go)
+// once per provider at startup. stateKey signs the OAuth state parameter;
+// pass the module's JWT signing secret (deps.JWT.Secret).
+func NewRegistry(stateKey string) *Registry {
+	return &Registry{
+		providers: map[string]goth.Provider{},
+		stateKey:  []byte(stateKey),
+		stateTTL:  10 * time.Minute,
+	}
+}
+
+// Register adds a goth provider under name, the {provider} path segment
+// (e.g. "discord"). Called once per provider at startup from
+// RegisterProviders; a duplicate name panics, since that can only be a
+// wiring mistake, never a runtime condition.
+func (r *Registry) Register(name string, p goth.Provider) {
+	if _, exists := r.providers[name]; exists {
+		panic(fmt.Sprintf("social: provider %q already registered", name))
+	}
+	r.providers[name] = p
+}
+
+var (
+	// ErrUnknownProvider is returned by BeginURL/Complete for a {provider}
+	// path segment with no registration; the handler maps it to 404.
+	ErrUnknownProvider = errors.New("social: unknown provider")
+	// ErrInvalidState is returned by Complete when the callback's state
+	// parameter fails its signature or TTL check: forged, replayed, or the
+	// link went stale. The handler maps it to 401.
+	ErrInvalidState = errors.New("social: invalid or expired state")
+)
+
+// BeginURL returns the named provider's OAuth consent URL, embedding a
+// signed state parameter the callback verifies without any stored session.
+func (r *Registry) BeginURL(name string) (string, error) {
+	p, ok := r.providers[name]
+	if !ok {
+		return "", ErrUnknownProvider
+	}
+	state, err := r.sign(name)
+	if err != nil {
+		return "", err
+	}
+	sess, err := p.BeginAuth(state)
+	if err != nil {
+		return "", err
+	}
+	return sess.GetAuthURL()
+}
+
+// Complete verifies the callback's state parameter and exchanges its code
+// for the provider's user profile. values carries the callback's
+// query-string parameters or (Apple) form_post fields; both shapes satisfy
+// goth.Params, which every goth Session.Authorize needs.
+//
+// No session survives from BeginURL to Complete: every OAuth2 provider
+// goth ships resolves Authorize purely from the callback params and the
+// provider's own fixed client config, so unmarshaling a session fresh here
+// (rather than round-tripping the one BeginAuth returned) is equivalent.
+func (r *Registry) Complete(name string, values url.Values) (ExternalUser, error) {
+	p, ok := r.providers[name]
+	if !ok {
+		return ExternalUser{}, ErrUnknownProvider
+	}
+	if err := r.verify(name, values.Get("state")); err != nil {
+		return ExternalUser{}, err
+	}
+
+	sess, err := p.UnmarshalSession("{}")
+	if err != nil {
+		return ExternalUser{}, err
+	}
+	if _, err := sess.Authorize(p, values); err != nil {
+		return ExternalUser{}, err
+	}
+	user, err := p.FetchUser(sess)
+	if err != nil {
+		return ExternalUser{}, err
+	}
+	return ExternalUser{
+		Provider:    user.Provider,
+		ProviderKey: user.UserID,
+		Email:       user.Email,
+		Name:        user.Name,
+		AvatarURL:   user.AvatarURL,
+	}, nil
+}
+
+// sign produces "<provider>.<expiry-unix>.<nonce>.<hmac>", base64url-encoded
+// as one opaque token: self-verifying, so the callback needs no
+// server-side lookup to detect a forged or stale state.
+func (r *Registry) sign(provider string) (string, error) {
+	var nonce [16]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return "", err
+	}
+	expiry := time.Now().Add(r.stateTTL).Unix()
+	payload := fmt.Sprintf("%s.%d.%s", provider, expiry, base64.RawURLEncoding.EncodeToString(nonce[:]))
+	return base64.RawURLEncoding.EncodeToString([]byte(payload + "." + r.mac(payload))), nil
+}
+
+// verify checks state's signature, provider binding and expiry.
+func (r *Registry) verify(provider, state string) error {
+	raw, err := base64.RawURLEncoding.DecodeString(state)
+	if err != nil {
+		return ErrInvalidState
+	}
+	parts := strings.SplitN(string(raw), ".", 4)
+	if len(parts) != 4 || parts[0] != provider {
+		return ErrInvalidState
+	}
+	payload := parts[0] + "." + parts[1] + "." + parts[2]
+	if !hmac.Equal([]byte(r.mac(payload)), []byte(parts[3])) {
+		return ErrInvalidState
+	}
+	expiry, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil || time.Now().Unix() > expiry {
+		return ErrInvalidState
+	}
+	return nil
+}
+
+func (r *Registry) mac(payload string) string {
+	mac := hmac.New(sha256.New, r.stateKey)
+	mac.Write([]byte(payload))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}

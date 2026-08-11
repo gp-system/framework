@@ -1,0 +1,25 @@
+package seeds
+
+import (
+	"github.com/gp-system/dbx"
+	"github.com/gp-system/dbx/seed"
+{{- if eq .DB "bun"}}
+	"github.com/uptrace/bun"
+{{- else}}
+	"github.com/gp-system/dbx/pg"
+{{- end}}
+	// gpsystem:seed-imports
+)
+
+type Deps struct {
+{{- if eq .DB "bun"}}
+	DB *bun.DB
+{{- else}}
+	DB *pg.DB
+{{- end}}
+	Transactor dbx.Transactor
+}
+
+func Register(reg *seed.Registry, deps Deps) {
+	// gpsystem:seeds
+}

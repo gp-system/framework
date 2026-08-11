@@ -1,0 +1,43 @@
+package mail
+
+import (
+	"context"
+	"embed"
+
+	kitmail "github.com/gp-system/mail"
+)
+
+//go:embed templates/verify_email.html.tmpl templates/verify_email.txt.tmpl
+var verifyEmailTemplatesFS embed.FS
+
+// VerifyEmailMail is the payload rendered into the verify_email templates.
+type VerifyEmailMail struct {
+	// Name is the registrant's display name.
+	Name string
+	// Link is the absolute verification URL: AppBaseURL + "/verify-email?token=...".
+	Link string
+}
+
+// VerifyEmailNotifier sends the email-verification link created at
+// registration. The injected kitmail.Mailer is the kit's transport seam:
+// SMTP in production (smtp.NewIfConfigured/MustNewIfConfigured),
+// kitmail.NewDiscard() in dev without a mail server configured,
+// kitmail.NewMemory() in tests.
+type VerifyEmailNotifier struct {
+	mailer kitmail.Mailer
+}
+
+// NewVerifyEmailNotifier builds a VerifyEmailNotifier over m.
+func NewVerifyEmailNotifier(m kitmail.Mailer) *VerifyEmailNotifier {
+	return &VerifyEmailNotifier{mailer: m}
+}
+
+// Notify renders the templates with p and sends the result to to.
+func (n *VerifyEmailNotifier) Notify(ctx context.Context, to string, p VerifyEmailMail) error {
+	msg := kitmail.NewMessage().
+		WithTo(to).
+		WithSubject("Confirm your email address").
+		WithBody(kitmail.Template(verifyEmailTemplatesFS, "templates/verify_email.html.tmpl", p).
+			WithTextTemplate("templates/verify_email.txt.tmpl"))
+	return n.mailer.Send(ctx, msg)
+}

@@ -1,0 +1,48 @@
+package main
+
+import (
+	"context"
+	"log"
+
+{{- if eq .DB "bun"}}
+	"github.com/gp-system/dbx/bunx"
+{{- end}}
+	"github.com/gp-system/dbx/pg"
+	"github.com/gp-system/envconf"
+	"github.com/gp-system/events"
+	"github.com/gp-system/events/outbox"
+	"github.com/gp-system/events/scheduler"
+	"{{.Kit.Path}}/worker"
+
+	"{{.GoModule}}/internal/platform/config"
+	// gpsystem:imports
+)
+
+func main() {
+	cfg := envconf.MustLoad[config.Config]()
+	ctx := context.Background()
+	pool := pg.MustNewPool(ctx, cfg.DB)
+	relay := outbox.MustNewRelay(ctx, cfg.Outbox, pool, cfg.Worker.Valkey)
+{{- if eq .DB "bun"}}
+	bunDB := bunx.Open(pool)
+{{- end}}
+	// gpsystem:pools
+
+	err := worker.Run(ctx, cfg.Worker, func(reg *events.Registry, sched *scheduler.Schedule) error {
+		// gpsystem:modules
+		return nil
+	},
+		worker.WithOutboxRelay(relay),
+		// gpsystem:closers
+{{- if eq .DB "bun"}}
+		worker.WithCloser("bun", func(context.Context) error { return bunDB.Close() }),
+{{- end}}
+		worker.WithCloser("pgxpool", func(context.Context) error {
+			pool.Close()
+			return nil
+		}),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+}

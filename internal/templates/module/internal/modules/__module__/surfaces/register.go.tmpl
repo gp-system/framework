@@ -1,0 +1,25 @@
+package surfaces
+
+import (
+{{- if eq .DB "bun"}}
+	"github.com/uptrace/bun"
+{{- end}}
+
+	"github.com/gp-system/dbx"
+{{- if ne .DB "bun"}}
+	"github.com/gp-system/dbx/pg"
+{{- end}}
+	// gpsystem:imports
+)
+
+type Dependencies struct {
+{{- if eq .DB "bun"}}
+	DB         *bun.DB
+{{- else}}
+	DB         *pg.DB
+{{- end}}
+	Transactor dbx.Transactor
+	// gpsystem:dependencies
+}
+
+// gpsystem:surfaces

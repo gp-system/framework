@@ -1,0 +1,23 @@
+func Register{{pascal .Surface}}(router chi.Router, deps Dependencies) {
+	{{camel .Surface}}Svc := {{.Surface}}service.New()
+	{{camel .Surface}}Handler := {{.Surface}}http.New({{camel .Surface}}Svc)
+	{{camel .Surface}}Policies := {{.Surface}}policy.New()
+	router.Route("{{.BasePath}}", func(r chi.Router) {
+		// gpsystem:surface-middleware
+		{{.GenPackage}}.HandlerWithOptions({{.GenPackage}}.NewStrictHandlerWithOptions(
+			{{camel .Surface}}Handler,
+			[]{{.GenPackage}}.StrictMiddlewareFunc{
+				server.StrictValidator[{{.GenPackage}}.StrictHandlerFunc](nil),
+				// Last = outermost: authorization runs before validation.
+				kitpolicy.Enforcer[{{.GenPackage}}.StrictHandlerFunc]({{camel .Surface}}Policies, {{.GenPackage}}.PermissionByOperation, {{.GenPackage}}.PolicyByOperation),
+			},
+			{{.GenPackage}}.StrictHTTPServerOptions{
+				RequestErrorHandlerFunc:  httperr.WriteBadRequest,
+				ResponseErrorHandlerFunc: server.WriteError,
+			},
+		), {{.GenPackage}}.ChiServerOptions{
+			BaseRouter:       r,
+			ErrorHandlerFunc: httperr.WriteBadRequest,
+		})
+	})
+}

@@ -1,0 +1,1 @@
+events.Listen(reg, "{{camel .Listener}}", {{camel .Listener}}(deps){{if .Queue}}, queue.OnQueue("{{.Queue}}"){{end}})

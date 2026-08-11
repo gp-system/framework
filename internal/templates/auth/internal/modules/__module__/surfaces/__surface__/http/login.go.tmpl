@@ -1,0 +1,26 @@
+package http
+
+import (
+	"context"
+	"errors"
+	"net/http"
+
+	gen "{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/http/gen"
+	"{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/http/mapper"
+	"{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/service"
+)
+
+// Login handles POST {{.BasePath}}/login.
+func (h *Handler) Login(ctx context.Context, req gen.LoginRequest) (gen.LoginResponse, error) {
+	pair, err := h.svc.Login(ctx, req.Body.Email, req.Body.Password)
+	if errors.Is(err, service.ErrEmailNotVerified) {
+		return gen.Login403JSONResponse(mapper.Problem(http.StatusForbidden, "email not verified")), nil
+	}
+	if errors.Is(err, service.ErrInvalidCredentials) {
+		return gen.Login401JSONResponse(mapper.Problem(http.StatusUnauthorized, "invalid credentials")), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return gen.Login200JSONResponse(mapper.ToTokenPair(pair)), nil
+}

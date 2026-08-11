@@ -1,0 +1,26 @@
+# Host UID/GID the dev containers run as, so files written into the
+# bind-mounted source belong to you, not root. Set to `id -u` / `id -g`.
+USER_ID=1000
+GROUP_ID=1000
+
+# Traefik-facing hostnames (proxynet, no published ports).
+APP_HOST={{.Project}}.localhost
+MAILPIT_HOST=mailpit.{{.Project}}.localhost
+RUSTFS_CONSOLE_HOST=rustfs-console.{{.Project}}.localhost
+RUSTFS_S3_HOST=rustfs.{{.Project}}.localhost
+
+# Mail (mailpit; wire smtp.Config into your project's config to use these)
+MAIL_HOST=mailpit
+MAIL_PORT=1025
+MAIL_TLS=none
+MAIL_AUTH=none
+MAIL_FROM_ADDRESS=no-reply@{{.Project}}.localhost
+
+# S3-compatible object storage (rustfs; wire s3.Config into your project's
+# config to use these)
+S3_ENDPOINT=http://rustfs:9000
+S3_REGION=us-east-1
+S3_BUCKET={{.Project}}
+S3_ACCESS_KEY={{.Project}}
+S3_SECRET_KEY={{.Project}}-secret
+S3_USE_PATH_STYLE=true

@@ -1,0 +1,58 @@
+realtime:
+  build:
+    context: .
+    dockerfile: Dockerfile
+    target: development
+    args:
+      CMD: realtime
+      USER_ID: "${USER_ID}"
+      GROUP_ID: "${GROUP_ID}"
+    {{- if .Kit.Replace}}
+    additional_contexts:
+      kit: {{.Kit.Replace}}
+      {{- if .Errs.Replace}}
+      errs: {{.Errs.Replace}}
+      {{- end}}
+      {{- range .Mods}}
+      {{- if .Replace}}
+      {{.Name}}: {{.Replace}}
+      {{- end}}
+      {{- end}}
+    {{- end}}
+  env_file: .env
+  environment:
+    OTEL_SERVICE_NAME: {{.Project}}-realtime
+  volumes:
+    - .:/src
+    {{- if .Kit.Replace}}
+    - {{.Kit.Replace}}:{{.Kit.Mount}}:ro
+    {{- end}}
+    {{- if .Errs.Replace}}
+    - {{.Errs.Replace}}:{{.Errs.Mount}}:ro
+    {{- end}}
+    {{- range .Mods}}
+    {{- if .Replace}}
+    - {{.Replace}}:{{.Mount}}:ro
+    {{- end}}
+    {{- end}}
+    - gomodcache:/gomodcache
+    - gocache:/gocache
+  depends_on:
+    valkey:
+      condition: service_started
+  stop_grace_period: 30s
+  networks:
+    - default
+    - proxynet
+  restart: unless-stopped
+  labels:
+    - traefik.enable=true
+    - traefik.http.routers.{{camel .Project}}Realtime.rule=Host(`${APP_HOST}`) && PathPrefix(`/realtime`)
+    - traefik.http.routers.{{camel .Project}}Realtime.entrypoints=web
+    - traefik.http.routers.{{camel .Project}}RealtimeSsl.rule=Host(`${APP_HOST}`) && PathPrefix(`/realtime`)
+    - traefik.http.routers.{{camel .Project}}RealtimeSsl.entrypoints=websecure
+    - traefik.http.routers.{{camel .Project}}RealtimeSsl.tls.certresolver=letsEncrypt
+    - traefik.http.services.{{camel .Project}}Realtime.loadbalancer.server.port=3000
+    - traefik.http.services.{{camel .Project}}Realtime.loadbalancer.responseForwarding.flushInterval=-1
+    - traefik.http.services.{{camel .Project}}Realtime.loadbalancer.healthCheck.path=/realtime/healthz
+    - traefik.http.services.{{camel .Project}}Realtime.loadbalancer.healthCheck.interval=3s

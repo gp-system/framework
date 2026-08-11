@@ -1,0 +1,3 @@
+#!/bin/sh
+# Lint the commit message with commitlint (install: mise run hooks:install)
+exec npx --no-install commitlint --edit "$1"

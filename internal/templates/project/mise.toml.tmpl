@@ -1,0 +1,86 @@
+[tools]
+go = "1.25"
+node = "24"
+jq = "latest"
+
+[tasks.setup]
+description = "Install TypeSpec toolchain"
+run = "npm ci || npm install"
+
+[tasks.spec]
+description = "Compile TypeSpec to OpenAPI (api/openapi/)"
+run = "npx tsp compile spec/typespec/main.tsp --config tspconfig.yaml"
+
+[tasks.generate]
+description = "Regenerate everything: spec -> OpenAPI -> Go server code"
+run = ["mise run spec", "go generate ./...", "go mod tidy", "go build ./..."]
+
+[tasks.dev]
+description = "Build and start the full dev stack (postgres, valkey, mailpit, rustfs, app modules)"
+run = "docker compose up -d --build"
+
+[tasks."dev:deps"]
+description = "Start only the backing services (no app modules)"
+run = "docker compose up -d postgres valkey mailpit rustfs rustfs-init"
+
+[tasks.restart]
+description = "Restart app services after a code change (bind-mounted source, no rebuild)"
+run = "docker compose restart"
+
+[tasks.worker]
+description = "Run the background worker (asynq server + outbox relay + scheduler)"
+run = "docker compose up -d --build worker"
+
+[tasks.migrate]
+description = "Apply pending goose SQL migrations"
+run = "docker compose run --rm migrate"
+
+[tasks."migrate:seed"]
+description = "Apply pending migrations, then run seeders (idempotent; safe to re-run)"
+run = "docker compose run --rm migrate go run ./cmd/migrate up --seed"
+
+[tasks.seed]
+description = "Run seeders only, without touching migrations (idempotent; safe to re-run)"
+run = "docker compose run --rm migrate go run ./cmd/migrate seed"
+
+[tasks.logs]
+description = "Follow the app module logs (backing services like postgres/valkey/mailpit/rustfs excluded); pass service names to narrow further, e.g. `mise run logs auth chat`"
+alias = "log"
+run = '''
+set -eu
+app_services() {
+  docker compose config --format json \
+    | jq -r '.services | to_entries[]
+             | select(.value.build != null and .value.restart != "no")
+             | .key' \
+    | sort
+}
+run_logs() {
+  if [ "$#" -gt 0 ]; then
+    exec docker compose logs -f --tail=100 "$@"
+  fi
+  services="$(app_services)"
+  if [ -z "$services" ]; then
+    echo "no app services found; check compose.yml" >&2
+    exit 1
+  fi
+  exec docker compose logs -f --tail=100 $services
+}
+run_logs
+'''
+
+[tasks."logs:all"]
+description = "Follow every service log, backing services included"
+run = "docker compose logs -f"
+
+[tasks."dev:down"]
+run = "docker compose down"
+
+[tasks.build]
+run = "go build ./..."
+
+[tasks.test]
+run = "go test ./..."
+
+[tasks.lint]
+run = "golangci-lint run"

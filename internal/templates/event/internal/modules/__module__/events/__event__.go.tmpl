@@ -1,0 +1,6 @@
+package events
+
+type {{pascal .Event}} struct {
+}
+
+func ({{pascal .Event}}) EventName() string { return "{{.EventName}}" }

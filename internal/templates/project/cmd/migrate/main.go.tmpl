@@ -1,0 +1,74 @@
+package main
+
+import (
+	"context"
+	"log"
+	"os"
+	"slices"
+
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
+
+	"github.com/gp-system/dbx"
+{{- if eq .DB "bun"}}
+	"github.com/gp-system/dbx/bunx"
+{{- end}}
+	"github.com/gp-system/dbx/pg"
+	"github.com/gp-system/envconf"
+	"github.com/gp-system/dbx/seed"
+
+	"{{.GoModule}}/migrations"
+	"{{.GoModule}}/seeds"
+)
+
+type config struct {
+	DB dbx.Config `envPrefix:"DB_"`
+}
+
+func main() {
+	cfg := envconf.MustLoad[config]()
+	ctx := context.Background()
+
+	args := os.Args[1:]
+	doSeed := false
+	args = slices.DeleteFunc(args, func(a string) bool {
+		if a == "--seed" {
+			doSeed = true
+			return true
+		}
+		return false
+	})
+	if len(args) == 0 {
+		args = []string{"up"}
+	}
+	command := args[0]
+
+	pool := pg.MustNewPool(ctx, cfg.DB)
+	defer pool.Close()
+
+	if command != "seed" {
+		db := stdlib.OpenDBFromPool(pool)
+		goose.SetBaseFS(migrations.FS)
+		if err := goose.SetDialect("postgres"); err != nil {
+			log.Fatalf("migrate: set dialect: %v", err)
+		}
+		if err := goose.RunContext(ctx, command, db, ".", args[1:]...); err != nil {
+			log.Fatalf("migrate: %s: %v", command, err)
+		}
+	}
+
+	if command == "seed" || doSeed {
+{{- if eq .DB "bun"}}
+		bunDB := bunx.Open(pool)
+		defer func() { _ = bunDB.Close() }()
+		deps := seeds.Deps{DB: bunDB, Transactor: bunx.NewTransactor(bunDB)}
+{{- else}}
+		deps := seeds.Deps{DB: pg.NewDB(pool), Transactor: pg.NewTransactor(pool)}
+{{- end}}
+		reg := &seed.Registry{}
+		seeds.Register(reg, deps)
+		if err := reg.Run(ctx); err != nil {
+			log.Fatalf("migrate: seed: %v", err)
+		}
+	}
+}

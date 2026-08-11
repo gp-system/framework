@@ -1,0 +1,30 @@
+JWT kitauth.Config
+// AuthDB/AuthTransactor always run over the kit's pgx executor, regardless
+// of the project's DB choice for its business modules (mirroring the outbox
+// dispatcher/notification database channel): the generated auth repository
+// is hand-written pgx, so its transactions must stay real pgx transactions
+// even in a bun project, where the project's own Transactor would carry a
+// *bun.Tx the pgx repository cannot see.
+AuthDB               *pg.DB
+AuthTransactor       dbx.Transactor
+AppBaseURL           string
+EmailVerificationTTL time.Duration
+PasswordResetTTL     time.Duration
+{{- if .HasSocialProvider "discord"}}
+OAuthDiscordClientID     string
+OAuthDiscordClientSecret string
+{{- end}}
+{{- if .HasSocialProvider "facebook"}}
+OAuthFacebookClientID     string
+OAuthFacebookClientSecret string
+{{- end}}
+{{- if .HasSocialProvider "google"}}
+OAuthGoogleClientID     string
+OAuthGoogleClientSecret string
+{{- end}}
+{{- if .HasSocialProvider "apple"}}
+OAuthAppleClientID   string
+OAuthAppleTeamID     string
+OAuthAppleKeyID      string
+OAuthApplePrivateKey string
+{{- end}}

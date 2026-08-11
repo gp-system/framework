@@ -1,0 +1,17 @@
+package service
+
+import "time"
+
+// Config holds the {{.Surface}} surface's own settings, populated from the
+// module's Dependencies (sourced from platform config under the AUTH_ env
+// keys added at internal/platform/config/config.go's gpsystem:config anchor).
+type Config struct {
+	// AppBaseURL is the public base URL used to build the links sent in the
+	// verification and password-reset emails, e.g. "https://app.example.com".
+	AppBaseURL string
+	// EmailVerificationTTL bounds how long a registration's verification
+	// token stays valid.
+	EmailVerificationTTL time.Duration
+	// PasswordResetTTL bounds how long a ForgotPassword token stays valid.
+	PasswordResetTTL time.Duration
+}

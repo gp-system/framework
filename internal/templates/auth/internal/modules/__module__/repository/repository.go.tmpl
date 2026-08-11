@@ -1,0 +1,310 @@
+// repository.go implements the {{.Module}} module's repository with hand-written pgx
+// queries. It receives a pg.DBTX: inside a Transactor closure the same call
+// transparently runs on the transaction carried by the context.
+package repository
+
+import (
+	"context"
+	"time"
+
+	"github.com/gp-system/dbx/pg"
+	"{{.Errs.Path}}"
+	"github.com/jackc/pgx/v5"
+)
+
+type pgRepository struct {
+	db pg.DBTX
+}
+
+func New(db pg.DBTX) *pgRepository {
+	return &pgRepository{db: db}
+}
+
+var _ Repository = (*pgRepository)(nil)
+
+func (r *pgRepository) InsertUser(ctx context.Context, name, email string) (string, error) {
+	var id string
+	err := r.db.QueryRow(ctx, `
+		INSERT INTO users (name, email) VALUES ($1, $2) RETURNING uuid`, name, email).Scan(&id)
+	if err != nil {
+		return "", errs.Wrap(err, "{{.Module}}: insert user")
+	}
+	return id, nil
+}
+
+func (r *pgRepository) InsertCredential(ctx context.Context, userID, passwordHash string) error {
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO auth_credentials (user_id, provider, provider_key)
+		VALUES ($1, 'local', $2)`, userID, passwordHash)
+	if err != nil {
+		return errs.Wrap(err, "{{.Module}}: insert credential")
+	}
+	return nil
+}
+
+func (r *pgRepository) UpdateCredentialPassword(ctx context.Context, userID, passwordHash string) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE auth_credentials SET provider_key = $2
+		WHERE user_id::text = $1 AND provider = 'local'`, userID, passwordHash)
+	if err != nil {
+		return errs.Wrap(err, "{{.Module}}: update credential password")
+	}
+	return nil
+}
+
+func (r *pgRepository) AssignRole(ctx context.Context, userID, role string) error {
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO user_roles (user_id, role_id)
+		SELECT $1, id FROM roles WHERE name = $2
+		ON CONFLICT DO NOTHING`, userID, role)
+	if err != nil {
+		return errs.Wrap(err, "{{.Module}}: assign role")
+	}
+	return nil
+}
+
+func (r *pgRepository) GetUserByID(ctx context.Context, id string) (*User, error) {
+	var u User
+	var emailVerifiedAt *time.Time
+	err := r.db.QueryRow(ctx, `
+		SELECT uuid, name, email, email_verified_at FROM users
+		WHERE uuid::text = $1 AND deleted_at IS NULL`, id).
+		Scan(&u.ID, &u.Name, &u.Email, &emailVerifiedAt)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, errs.Wrap(err, "{{.Module}}: get user")
+	}
+	u.EmailVerified = emailVerifiedAt != nil
+	return &u, nil
+}
+
+func (r *pgRepository) GetCredentialByEmail(ctx context.Context, email string) (*Credential, error) {
+	var c Credential
+	var emailVerifiedAt *time.Time
+	err := r.db.QueryRow(ctx, `
+		SELECT u.uuid, u.name, u.email, u.email_verified_at, cr.provider_key
+		FROM users u
+		JOIN auth_credentials cr ON cr.user_id = u.uuid AND cr.provider = 'local'
+		WHERE u.email = $1 AND u.deleted_at IS NULL`, email).
+		Scan(&c.ID, &c.Name, &c.Email, &emailVerifiedAt, &c.PasswordHash)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, errs.Wrap(err, "{{.Module}}: get credential")
+	}
+	c.EmailVerified = emailVerifiedAt != nil
+	return &c, nil
+}
+
+func (r *pgRepository) GetUserByEmail(ctx context.Context, email string) (*User, error) {
+	var u User
+	var emailVerifiedAt *time.Time
+	err := r.db.QueryRow(ctx, `
+		SELECT uuid, name, email, email_verified_at FROM users
+		WHERE email = $1 AND deleted_at IS NULL`, email).
+		Scan(&u.ID, &u.Name, &u.Email, &emailVerifiedAt)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, errs.Wrap(err, "{{.Module}}: get user by email")
+	}
+	u.EmailVerified = emailVerifiedAt != nil
+	return &u, nil
+}
+
+func (r *pgRepository) GetCredentialByProvider(ctx context.Context, provider, providerKey string) (*Credential, error) {
+	var c Credential
+	var emailVerifiedAt *time.Time
+	err := r.db.QueryRow(ctx, `
+		SELECT u.uuid, u.name, u.email, u.email_verified_at, cr.provider_key
+		FROM users u
+		JOIN auth_credentials cr ON cr.user_id = u.uuid AND cr.provider = $1
+		WHERE cr.provider_key = $2 AND u.deleted_at IS NULL`, provider, providerKey).
+		Scan(&c.ID, &c.Name, &c.Email, &emailVerifiedAt, &c.PasswordHash)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, errs.Wrap(err, "{{.Module}}: get credential by provider")
+	}
+	c.EmailVerified = emailVerifiedAt != nil
+	return &c, nil
+}
+
+func (r *pgRepository) InsertSocialCredential(ctx context.Context, userID, provider, providerKey string) error {
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO auth_credentials (user_id, provider, provider_key)
+		VALUES ($1, $2, $3)`, userID, provider, providerKey)
+	if err != nil {
+		return errs.Wrap(err, "{{.Module}}: insert social credential")
+	}
+	return nil
+}
+
+func (r *pgRepository) GetRoles(ctx context.Context, userID string) ([]string, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT ro.name FROM user_roles ur
+		JOIN roles ro ON ro.id = ur.role_id
+		WHERE ur.user_id::text = $1 ORDER BY ro.name`, userID)
+	if err != nil {
+		return nil, errs.Wrap(err, "{{.Module}}: roles")
+	}
+	defer rows.Close()
+
+	var roles []string
+	for rows.Next() {
+		var role string
+		if err := rows.Scan(&role); err != nil {
+			return nil, errs.Wrap(err, "{{.Module}}: roles scan")
+		}
+		roles = append(roles, role)
+	}
+	return roles, rows.Err()
+}
+
+func (r *pgRepository) GetPermissions(ctx context.Context, userID string) ([]string, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT DISTINCT p.name
+		FROM user_roles ur
+		JOIN role_permissions rp ON rp.role_id = ur.role_id
+		JOIN permissions p ON p.id = rp.permission_id
+		WHERE ur.user_id::text = $1
+		ORDER BY p.name`, userID)
+	if err != nil {
+		return nil, errs.Wrap(err, "{{.Module}}: permissions")
+	}
+	defer rows.Close()
+
+	var permissions []string
+	for rows.Next() {
+		var permission string
+		if err := rows.Scan(&permission); err != nil {
+			return nil, errs.Wrap(err, "{{.Module}}: permissions scan")
+		}
+		permissions = append(permissions, permission)
+	}
+	return permissions, rows.Err()
+}
+
+func (r *pgRepository) MarkEmailVerified(ctx context.Context, userID string) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE users SET email_verified_at = NOW(), updated_at = NOW()
+		WHERE uuid::text = $1`, userID)
+	if err != nil {
+		return errs.Wrap(err, "{{.Module}}: mark email verified")
+	}
+	return nil
+}
+
+func (r *pgRepository) InsertRefreshToken(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error {
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+		VALUES ($1, $2, $3)`, userID, tokenHash, expiresAt)
+	if err != nil {
+		return errs.Wrap(err, "{{.Module}}: insert refresh token")
+	}
+	return nil
+}
+
+func (r *pgRepository) GetRefreshToken(ctx context.Context, tokenHash string) (*RefreshToken, error) {
+	var t RefreshToken
+	err := r.db.QueryRow(ctx, `
+		SELECT user_id, expires_at, revoked FROM refresh_tokens
+		WHERE token_hash = $1`, tokenHash).Scan(&t.UserID, &t.ExpiresAt, &t.Revoked)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, errs.Wrap(err, "{{.Module}}: get refresh token")
+	}
+	return &t, nil
+}
+
+func (r *pgRepository) RevokeRefreshToken(ctx context.Context, tokenHash string) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE refresh_tokens SET revoked = TRUE WHERE token_hash = $1`, tokenHash)
+	if err != nil {
+		return errs.Wrap(err, "{{.Module}}: revoke refresh token")
+	}
+	return nil
+}
+
+func (r *pgRepository) RevokeAllRefreshTokens(ctx context.Context, userID string) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE refresh_tokens SET revoked = TRUE
+		WHERE user_id::text = $1 AND revoked = FALSE`, userID)
+	if err != nil {
+		return errs.Wrap(err, "{{.Module}}: revoke all refresh tokens")
+	}
+	return nil
+}
+
+func (r *pgRepository) InsertEmailVerificationToken(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error {
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO email_verification_tokens (user_id, token_hash, expires_at)
+		VALUES ($1, $2, $3)`, userID, tokenHash, expiresAt)
+	if err != nil {
+		return errs.Wrap(err, "{{.Module}}: insert email verification token")
+	}
+	return nil
+}
+
+func (r *pgRepository) GetEmailVerificationToken(ctx context.Context, tokenHash string) (*VerificationToken, error) {
+	var t VerificationToken
+	err := r.db.QueryRow(ctx, `
+		SELECT user_id, expires_at, consumed_at FROM email_verification_tokens
+		WHERE token_hash = $1`, tokenHash).Scan(&t.UserID, &t.ExpiresAt, &t.ConsumedAt)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, errs.Wrap(err, "{{.Module}}: get email verification token")
+	}
+	return &t, nil
+}
+
+func (r *pgRepository) ConsumeEmailVerificationToken(ctx context.Context, tokenHash string) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE email_verification_tokens SET consumed_at = NOW() WHERE token_hash = $1`, tokenHash)
+	if err != nil {
+		return errs.Wrap(err, "{{.Module}}: consume email verification token")
+	}
+	return nil
+}
+
+func (r *pgRepository) InsertPasswordResetToken(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error {
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+		VALUES ($1, $2, $3)`, userID, tokenHash, expiresAt)
+	if err != nil {
+		return errs.Wrap(err, "{{.Module}}: insert password reset token")
+	}
+	return nil
+}
+
+func (r *pgRepository) GetPasswordResetToken(ctx context.Context, tokenHash string) (*VerificationToken, error) {
+	var t VerificationToken
+	err := r.db.QueryRow(ctx, `
+		SELECT user_id, expires_at, consumed_at FROM password_reset_tokens
+		WHERE token_hash = $1`, tokenHash).Scan(&t.UserID, &t.ExpiresAt, &t.ConsumedAt)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, errs.Wrap(err, "{{.Module}}: get password reset token")
+	}
+	return &t, nil
+}
+
+func (r *pgRepository) ConsumePasswordResetToken(ctx context.Context, tokenHash string) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE password_reset_tokens SET consumed_at = NOW() WHERE token_hash = $1`, tokenHash)
+	if err != nil {
+		return errs.Wrap(err, "{{.Module}}: consume password reset token")
+	}
+	return nil
+}

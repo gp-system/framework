@@ -1,0 +1,17 @@
+package config
+
+import (
+	"github.com/gp-system/dbx"
+	"github.com/gp-system/events/outbox"
+	"{{.Kit.Path}}/server"
+	"{{.Kit.Path}}/worker"
+	// gpsystem:imports
+)
+
+type Config struct {
+	Server server.Config
+	DB     dbx.Config `envPrefix:"DB_"`
+	Worker worker.Config
+	Outbox outbox.Config `envPrefix:"OUTBOX_"`
+	// gpsystem:config
+}

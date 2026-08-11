@@ -1,0 +1,69 @@
+// Package repository defines the {{.Module}} module's persistence contract
+// and its models, shared by every surface; repository.go provides the postgres
+// implementation.
+package repository
+
+import (
+	"context"
+	"time"
+)
+
+// Repository is the {{.Module}} module's persistence contract.
+type Repository interface {
+	InsertUser(ctx context.Context, name, email string) (string, error)
+	InsertCredential(ctx context.Context, userID, passwordHash string) error
+	UpdateCredentialPassword(ctx context.Context, userID, passwordHash string) error
+	AssignRole(ctx context.Context, userID, role string) error
+	GetUserByID(ctx context.Context, id string) (*User, error)
+	GetUserByEmail(ctx context.Context, email string) (*User, error)
+	GetCredentialByEmail(ctx context.Context, email string) (*Credential, error)
+	GetCredentialByProvider(ctx context.Context, provider, providerKey string) (*Credential, error)
+	InsertSocialCredential(ctx context.Context, userID, provider, providerKey string) error
+	GetRoles(ctx context.Context, userID string) ([]string, error)
+	GetPermissions(ctx context.Context, userID string) ([]string, error)
+	MarkEmailVerified(ctx context.Context, userID string) error
+
+	InsertRefreshToken(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error
+	GetRefreshToken(ctx context.Context, tokenHash string) (*RefreshToken, error)
+	RevokeRefreshToken(ctx context.Context, tokenHash string) error
+	RevokeAllRefreshTokens(ctx context.Context, userID string) error
+
+	InsertEmailVerificationToken(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error
+	GetEmailVerificationToken(ctx context.Context, tokenHash string) (*VerificationToken, error)
+	ConsumeEmailVerificationToken(ctx context.Context, tokenHash string) error
+
+	InsertPasswordResetToken(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error
+	GetPasswordResetToken(ctx context.Context, tokenHash string) (*VerificationToken, error)
+	ConsumePasswordResetToken(ctx context.Context, tokenHash string) error
+}
+
+// User is the persisted user record.
+type User struct {
+	ID            string
+	Name          string
+	Email         string
+	EmailVerified bool
+}
+
+// Credential pairs a user with its stored auth_credentials.provider_key:
+// the bcrypt password hash for the "local" provider, the provider's stable
+// external user id for a social one.
+type Credential struct {
+	User
+	PasswordHash string
+}
+
+// RefreshToken is a persisted refresh token record.
+type RefreshToken struct {
+	UserID    string
+	ExpiresAt time.Time
+	Revoked   bool
+}
+
+// VerificationToken is a persisted email-verification or password-reset
+// token record; both tables share this shape.
+type VerificationToken struct {
+	UserID     string
+	ExpiresAt  time.Time
+	ConsumedAt *time.Time
+}

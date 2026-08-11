@@ -1,0 +1,6 @@
+{{if eq .DBConnector "bun" -}}
+{{pascal .DBConn}}DB *bun.DB
+{{- else -}}
+{{pascal .DBConn}}DB *pg.DB
+{{- end}}
+{{pascal .DBConn}}Transactor dbx.Transactor

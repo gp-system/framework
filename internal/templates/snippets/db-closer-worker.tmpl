@@ -1,0 +1,7 @@
+worker.WithCloser("{{.DBConn}}-pgxpool", func(context.Context) error {
+	{{camel .DBConn}}Pool.Close()
+	return nil
+}),
+{{- if eq .DBConnector "bun"}}
+worker.WithCloser("{{.DBConn}}-bun", func(context.Context) error { return {{camel .DBConn}}Bun.Close() }),
+{{- end}}

@@ -1,0 +1,174 @@
+// Package {{.Module}} centralizes the logic shared by every surface that
+// authenticates against the users table: bcrypt hashing, JWT issuance,
+// and refresh-token rotation/revocation. Surface services call into this
+// instead of duplicating it, layering their own account-lifecycle flows
+// (registration, password reset, ...) on top. Every token handed out for
+// later verification is stored server-side only as a SHA-256 hash; the
+// plaintext is returned to the caller once.
+package {{.Module}}
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"time"
+
+	kitauth "github.com/gp-system/auth"
+	"golang.org/x/crypto/bcrypt"
+
+	"{{.GoModule}}/internal/modules/{{.Module}}/repository"
+)
+
+// BcryptCost is used for every password this module hashes.
+const BcryptCost = 12
+
+var (
+	// ErrInvalidCredentials maps to 401 without leaking which part failed.
+	ErrInvalidCredentials = errors.New("{{.Module}}: invalid credentials")
+	// ErrEmailNotVerified maps to 403; returned by Authenticate before a
+	// registered user has verified their email.
+	ErrEmailNotVerified = errors.New("{{.Module}}: email not verified")
+)
+
+// User is the token subject every surface service returns to its handler.
+type User struct {
+	ID            string
+	Name          string
+	Email         string
+	EmailVerified bool
+	Roles         []string
+	Permissions   []string
+}
+
+// TokenPair is the JWT + refresh token bundle handed to a client on login or
+// refresh.
+type TokenPair struct {
+	AccessToken  string
+	RefreshToken string
+	ExpiresIn    int64
+	User         User
+}
+
+// Service implements the mechanics shared by every {{.Module}} surface.
+type Service struct {
+	repo   repository.Repository
+	jwtCfg kitauth.Config
+	issuer *kitauth.TokenIssuer[kitauth.DefaultClaims]
+}
+
+// New builds the shared service over the module's repository and JWT config.
+func New(repo repository.Repository, jwtCfg kitauth.Config) *Service {
+	return &Service{
+		repo:   repo,
+		jwtCfg: jwtCfg,
+		issuer: kitauth.NewTokenIssuer[kitauth.DefaultClaims](jwtCfg),
+	}
+}
+
+// HashToken is the server-side form of every verification-style token
+// (refresh, email verification, password reset): SHA-256, hex-encoded.
+func HashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+// HashPassword bcrypt-hashes a plaintext password at the module's cost.
+func HashPassword(password string) (string, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), BcryptCost)
+	if err != nil {
+		return "", err
+	}
+	return string(hash), nil
+}
+
+// Authenticate checks an email/password pair and, when the email is
+// verified, issues a token pair.
+func (s *Service) Authenticate(ctx context.Context, email, password string) (TokenPair, error) {
+	cred, err := s.repo.GetCredentialByEmail(ctx, email)
+	if err != nil {
+		return TokenPair{}, err
+	}
+	if cred == nil {
+		return TokenPair{}, ErrInvalidCredentials
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(cred.PasswordHash), []byte(password)); err != nil {
+		return TokenPair{}, ErrInvalidCredentials
+	}
+	if !cred.EmailVerified {
+		return TokenPair{}, ErrEmailNotVerified
+	}
+	return s.IssueTokens(ctx, cred.User)
+}
+
+// Refresh exchanges a live refresh token for a new pair, rotating the old
+// token out.
+func (s *Service) Refresh(ctx context.Context, refreshToken string) (TokenPair, error) {
+	stored, err := s.repo.GetRefreshToken(ctx, HashToken(refreshToken))
+	if err != nil {
+		return TokenPair{}, err
+	}
+	if stored == nil || stored.Revoked || time.Now().After(stored.ExpiresAt) {
+		return TokenPair{}, ErrInvalidCredentials
+	}
+
+	user, err := s.repo.GetUserByID(ctx, stored.UserID)
+	if err != nil {
+		return TokenPair{}, err
+	}
+	if user == nil {
+		return TokenPair{}, ErrInvalidCredentials
+	}
+
+	// Rotation: the old token dies with the exchange.
+	if err := s.repo.RevokeRefreshToken(ctx, HashToken(refreshToken)); err != nil {
+		return TokenPair{}, err
+	}
+	return s.IssueTokens(ctx, *user)
+}
+
+// Revoke invalidates a refresh token. Idempotent: revoking an unknown token
+// is a no-op.
+func (s *Service) Revoke(ctx context.Context, refreshToken string) error {
+	return s.repo.RevokeRefreshToken(ctx, HashToken(refreshToken))
+}
+
+// IssueTokens signs an access token carrying the user's roles and
+// permissions and stores a fresh refresh token.
+func (s *Service) IssueTokens(ctx context.Context, user repository.User) (TokenPair, error) {
+	roles, err := s.repo.GetRoles(ctx, user.ID)
+	if err != nil {
+		return TokenPair{}, err
+	}
+	permissions, err := s.repo.GetPermissions(ctx, user.ID)
+	if err != nil {
+		return TokenPair{}, err
+	}
+
+	access, err := s.issuer.Sign(kitauth.NewDefaultClaims(s.jwtCfg, user.ID, user.Name, roles, permissions))
+	if err != nil {
+		return TokenPair{}, err
+	}
+
+	refresh, err := kitauth.NewRefreshToken()
+	if err != nil {
+		return TokenPair{}, err
+	}
+	expiresAt := time.Now().Add(s.jwtCfg.RefreshTTL)
+	if err := s.repo.InsertRefreshToken(ctx, user.ID, HashToken(refresh), expiresAt); err != nil {
+		return TokenPair{}, err
+	}
+
+	return TokenPair{
+		AccessToken:  access,
+		RefreshToken: refresh,
+		ExpiresIn:    int64(s.jwtCfg.AccessTTL.Seconds()),
+		User: User{
+			// Reaching IssueTokens always follows a verified email
+			// (Authenticate checked it; Refresh only extends an
+			// already-issued session).
+			ID: user.ID, Name: user.Name, Email: user.Email, EmailVerified: true,
+			Roles: roles, Permissions: permissions,
+		},
+	}, nil
+}

@@ -1,0 +1,15 @@
+package http
+
+import (
+	"context"
+
+	gen "{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/http/gen"
+)
+
+// Logout handles POST {{.BasePath}}/logout.
+func (h *Handler) Logout(ctx context.Context, req gen.LogoutRequest) (gen.LogoutResponse, error) {
+	if err := h.svc.Logout(ctx, req.Body.RefreshToken); err != nil {
+		return nil, err
+	}
+	return gen.Logout204Response{}, nil
+}

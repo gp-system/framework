@@ -1,0 +1,5 @@
+func (h *Handler) {{pascal .Operation}}(ctx context.Context, req gen.{{pascal .Operation}}Request) (gen.{{pascal .Operation}}Response, error) {
+	_ = ctx
+	_ = req
+	return nil, httperr.New(http.StatusNotImplemented, "", "{{camel .Operation}} is not implemented yet")
+}

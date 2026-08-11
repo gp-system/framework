@@ -1,0 +1,7 @@
+{{if eq .DBConnector "bun" -}}
+{{pascal .DBConn}}DB: {{camel .DBConn}}Bun,
+{{pascal .DBConn}}Transactor: bunx.NewTransactor({{camel .DBConn}}Bun),
+{{- else -}}
+{{pascal .DBConn}}DB: pg.NewDB({{camel .DBConn}}Pool),
+{{pascal .DBConn}}Transactor: pg.NewTransactor({{camel .DBConn}}Pool),
+{{- end}}

@@ -1,0 +1,6 @@
+// Package {{if .DBConn}}{{.DBConn}}{{else}}repository{{end}} is the {{.Module}} module's single persistence
+// layer, shared by every surface: the row structs, the Repository interface
+// and its implementation live here once per module, so the same table never
+// grows a second, per-surface definition. Surface services reach it through
+// the module root package; handlers never import it.
+package {{if .DBConn}}{{.DBConn}}{{else}}repository{{end}}

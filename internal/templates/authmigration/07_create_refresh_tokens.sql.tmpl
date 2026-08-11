@@ -1,0 +1,17 @@
+-- +goose Up
+-- +goose StatementBegin
+CREATE TABLE refresh_tokens (
+    uuid       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id    UUID NOT NULL REFERENCES users(uuid) ON DELETE CASCADE,
+    token_hash VARCHAR(64) NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked    BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX refresh_tokens_user_idx ON refresh_tokens (user_id) WHERE revoked = FALSE;
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+DROP TABLE IF EXISTS refresh_tokens;
+-- +goose StatementEnd

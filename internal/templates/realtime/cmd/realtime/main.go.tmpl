@@ -1,0 +1,29 @@
+package main
+
+import (
+	"context"
+	"log"
+
+	"github.com/gp-system/envconf"
+	"{{.Kit.Path}}/realtime"
+
+	"{{.GoModule}}/internal/platform/config"
+	// gpsystem:imports
+)
+
+func main() {
+	cfg := envconf.MustLoad[config.Config]()
+	ctx := context.Background()
+
+	err := realtime.Run(ctx, cfg.Realtime, func(topics *realtime.TopicAuth) error {
+		// Authorize shared topic channels here, e.g.:
+		// topics.Allow("announcements", func(id *rbac.Identity) bool { return true })
+		// gpsystem:topics
+		return nil
+	},
+		// gpsystem:closers
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+}

@@ -1,0 +1,12 @@
+{{.Module}}Deps := {{.Module}}surfaces.Dependencies{
+{{- if eq .DB "bun"}}
+	DB:         bunDB,
+	Transactor: bunx.NewTransactor(bunDB),
+{{- else}}
+	DB:         pg.NewDB(pool),
+	Transactor: pg.NewTransactor(pool),
+{{- end}}
+	// gpsystem:deps-init({{.Module}})
+}
+{{.Module}}listeners.Register(reg, {{.Module}}Deps)
+{{.Module}}jobs.Register(sched, {{.Module}}Deps)

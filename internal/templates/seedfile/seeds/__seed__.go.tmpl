@@ -1,0 +1,16 @@
+package seeds
+
+import (
+	"context"
+
+	"github.com/gp-system/dbx/seed"
+)
+
+func {{camel .Seed}}(deps Deps) seed.Seeder {
+	return seed.Seeder{
+		Name: "{{snake .Seed}}",
+		Run: func(ctx context.Context) error {
+			return nil
+		},
+	}
+}

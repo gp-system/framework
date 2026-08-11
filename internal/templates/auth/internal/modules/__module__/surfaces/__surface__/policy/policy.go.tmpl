@@ -1,0 +1,18 @@
+// Package policy holds the {{.Surface}} surface's per-user authorization
+// rules. Register a Func for every name referenced by an @policy("...")
+// decorator in spec/typespec/modules/{{.Module}}/{{.Surface}}.tsp: requests
+// whose policy name is missing here fail closed.
+package policy
+
+import (
+	kitpolicy "github.com/gp-system/auth/policy"
+)
+
+// New builds the surface's policy registry. The generated endpoints are all
+// public (no @policy tags), so this starts empty; add entries as you add
+// permission- or policy-scoped operations to this surface.
+func New() *kitpolicy.Registry {
+	reg := kitpolicy.NewRegistry()
+	// gpsystem:policies
+	return reg
+}

@@ -1,0 +1,28 @@
+module {{.GoModule}}
+
+go 1.25
+
+require (
+	{{.Errs.Path}} {{.Errs.Version}}
+	{{.Kit.Path}} {{.Kit.Version}}
+	{{- range .Mods}}
+	{{.Path}} {{.Version}}
+	{{- end}}
+)
+
+tool (
+	{{.Kit.Path}}/cmd/gpsystem
+	github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
+)
+{{- if .Kit.Replace}}
+
+replace {{.Kit.Path}} => {{.Kit.Replace}}
+{{- end}}
+{{- if .Errs.Replace}}
+replace {{.Errs.Path}} => {{.Errs.Replace}}
+{{- end}}
+{{- range .Mods}}
+{{- if .Replace}}
+replace {{.Path}} => {{.Replace}}
+{{- end}}
+{{- end}}

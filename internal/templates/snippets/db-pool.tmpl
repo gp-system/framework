@@ -1,0 +1,4 @@
+{{camel .DBConn}}Pool := pg.MustNewPool(ctx, cfg.DB{{pascal .DBConn}})
+{{- if eq .DBConnector "bun"}}
+{{camel .DBConn}}Bun := bunx.Open({{camel .DBConn}}Pool)
+{{- end}}

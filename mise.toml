@@ -19,6 +19,17 @@ run = "go vet ./..."
 description = "Run golangci-lint"
 run = "golangci-lint run"
 
+[tasks."check:templates"]
+description = "Fail if any template asset is git-ignored (it would be missing from a fresh clone)"
+run = '''
+ignored=$(git ls-files --others --ignored --exclude-standard -- internal/templates)
+if [ -n "$ignored" ]; then
+  echo "git-ignored template assets (they would be missing from a fresh clone):" >&2
+  echo "$ignored" >&2
+  exit 1
+fi
+'''
+
 [tasks.commitlint]
 description = "Lint the last commit message with commitlint"
 run = "npx --no-install commitlint --last --verbose"

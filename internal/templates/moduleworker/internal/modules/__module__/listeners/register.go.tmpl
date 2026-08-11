@@ -1,0 +1,12 @@
+package listeners
+
+import (
+	{{.Module}}surfaces "{{.GoModule}}/internal/modules/{{.Module}}/surfaces"
+
+	"github.com/gp-system/events"
+	// gpsystem:worker-imports
+)
+
+func Register(reg *events.Registry, deps {{.Module}}surfaces.Dependencies) {
+	// gpsystem:listeners
+}

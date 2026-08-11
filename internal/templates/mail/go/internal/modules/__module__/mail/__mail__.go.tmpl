@@ -1,0 +1,39 @@
+package mail
+
+import (
+	"context"
+	"embed"
+
+	kitmail "github.com/gp-system/mail"
+)
+
+//go:embed templates/{{snake .Mail}}.html.tmpl templates/{{snake .Mail}}.txt.tmpl
+var {{camel .Mail}}TemplatesFS embed.FS
+
+// {{pascal .Mail}} is the payload the {{pascal .Mail}}Notifier renders into
+// the notification templates. Add whatever fields the templates need.
+type {{pascal .Mail}} struct {
+}
+
+// {{pascal .Mail}}Notifier sends the {{camel .Mail}} notification. The
+// injected kitmail.Mailer is the kit's transport seam: SMTP in production
+// (smtp.NewIfConfigured/MustNewIfConfigured), kitmail.NewDiscard() in dev
+// without a mail server configured, kitmail.NewMemory() in tests.
+type {{pascal .Mail}}Notifier struct {
+	mailer kitmail.Mailer
+}
+
+// New{{pascal .Mail}}Notifier builds a {{pascal .Mail}}Notifier over m.
+func New{{pascal .Mail}}Notifier(m kitmail.Mailer) *{{pascal .Mail}}Notifier {
+	return &{{pascal .Mail}}Notifier{mailer: m}
+}
+
+// Notify renders the templates with p and sends the result to to.
+func (n *{{pascal .Mail}}Notifier) Notify(ctx context.Context, to string, p {{pascal .Mail}}) error {
+	msg := kitmail.NewMessage().
+		WithTo(to).
+		WithSubject("TODO: subject for {{pascal .Mail}}").
+		WithBody(kitmail.Template({{camel .Mail}}TemplatesFS, "templates/{{snake .Mail}}.html.tmpl", p).
+			WithTextTemplate("templates/{{snake .Mail}}.txt.tmpl"))
+	return n.mailer.Send(ctx, msg)
+}

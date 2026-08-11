@@ -1,0 +1,12 @@
+@{{lower .Method}}
+@route("{{.HTTPPath}}")
+@operationId("{{pascal .Operation}}")
+@summary("TODO: describe {{camel .Operation}}")
+{{- if .Permission}}
+@permission("{{.Permission}}")
+{{- end}}
+{{- if .Policy}}
+@policy("{{.Policy}}")
+{{- end}}
+{{camel .Operation}}({{range $i, $p := .PathParams}}{{if $i}}, {{end}}@path {{$p}}: string{{end}}{{if .HasBody}}{{if .PathParams}}, {{end}}@body body: {{pascal .Module}}Item{{end}}): {{pascal .Module}}Item | NotFound{{if or .Permission .Policy}} | Unauthorized | Forbidden{{end}};
+

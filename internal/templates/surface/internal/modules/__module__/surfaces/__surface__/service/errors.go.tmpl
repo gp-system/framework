@@ -1,0 +1,6 @@
+package service
+
+import "{{.Errs.Path}}"
+
+var ErrList{{pascal .Module}} = errs.Define("{{snake .Module}}_{{snake .Surface}}_list_failed",
+	errs.Public("Could not load the list, please try again later."))

@@ -1,0 +1,5 @@
+{{if eq .DBConnector "bun" -}}
+"github.com/uptrace/bun"
+{{- else -}}
+"github.com/gp-system/dbx/pg"
+{{- end}}

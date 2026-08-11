@@ -1,0 +1,23 @@
+package http
+
+import (
+	"context"
+	"errors"
+	"net/http"
+
+	gen "{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/http/gen"
+	"{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/http/mapper"
+	"{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/service"
+)
+
+// VerifyEmail handles POST {{.BasePath}}/verify-email.
+func (h *Handler) VerifyEmail(ctx context.Context, req gen.VerifyEmailRequest) (gen.VerifyEmailResponse, error) {
+	err := h.svc.VerifyEmail(ctx, req.Body.Token)
+	if errors.Is(err, service.ErrInvalidToken) {
+		return gen.VerifyEmail401JSONResponse(mapper.Problem(http.StatusUnauthorized, "invalid or expired verification token")), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return gen.VerifyEmail204Response{}, nil
+}

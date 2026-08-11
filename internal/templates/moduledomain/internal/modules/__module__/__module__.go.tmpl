@@ -1,0 +1,17 @@
+// Package {{.Module}} owns the module's shared business logic: the
+// entities, rules and sentinel errors every surface works with. Surface
+// services (internal/modules/{{.Module}}/surfaces/<surface>/service) stay
+// thin, audience-specific seams that delegate here, so a rule written once
+// serves every surface.
+//
+// Import direction: http -> service -> {{.Module}} (module root) ->
+// repository. The module root never imports a surface package; handlers
+// never import the repository package.
+//
+// Grow this package with plain structs and methods (no framework types):
+// the entity views the surfaces map into their DTOs, and the operations the
+// surfaces share. Persistence contracts and row structs belong in the
+// module-level repository package next door. Wiring (Dependencies and the
+// Register<Surface> functions) lives in the surfaces package, keeping this
+// package importable from every surface service without a cycle.
+package {{.Module}}

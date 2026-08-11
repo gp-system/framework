@@ -1,0 +1,18 @@
+package http
+
+import (
+	gen "{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/http/gen"
+	"{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/service"
+)
+
+//go:generate go tool oapi-codegen -config ../../../../../../api/oapi-codegen/{{.Module}}-{{.Surface}}.yaml ../../../../../../api/openapi/{{.SpecFile}}
+
+type Handler struct {
+	svc *service.Service
+}
+
+func New(svc *service.Service) *Handler {
+	return &Handler{svc: svc}
+}
+
+var _ gen.StrictServerInterface = (*Handler)(nil)

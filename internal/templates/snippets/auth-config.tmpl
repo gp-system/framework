@@ -1,0 +1,22 @@
+JWT                  auth.Config   `envPrefix:"JWT_"`
+AppBaseURL           string        `env:"APP_BASE_URL,required"`
+EmailVerificationTTL time.Duration `env:"EMAIL_VERIFICATION_TTL" envDefault:"24h"`
+PasswordResetTTL     time.Duration `env:"PASSWORD_RESET_TTL" envDefault:"1h"`
+{{- if .HasSocialProvider "discord"}}
+OAuthDiscordClientID     string `env:"OAUTH_DISCORD_CLIENT_ID,required"`
+OAuthDiscordClientSecret string `env:"OAUTH_DISCORD_CLIENT_SECRET,required"`
+{{- end}}
+{{- if .HasSocialProvider "facebook"}}
+OAuthFacebookClientID     string `env:"OAUTH_FACEBOOK_CLIENT_ID,required"`
+OAuthFacebookClientSecret string `env:"OAUTH_FACEBOOK_CLIENT_SECRET,required"`
+{{- end}}
+{{- if .HasSocialProvider "google"}}
+OAuthGoogleClientID     string `env:"OAUTH_GOOGLE_CLIENT_ID,required"`
+OAuthGoogleClientSecret string `env:"OAUTH_GOOGLE_CLIENT_SECRET,required"`
+{{- end}}
+{{- if .HasSocialProvider "apple"}}
+OAuthAppleClientID   string `env:"OAUTH_APPLE_CLIENT_ID,required"`
+OAuthAppleTeamID     string `env:"OAUTH_APPLE_TEAM_ID,required"`
+OAuthAppleKeyID      string `env:"OAUTH_APPLE_KEY_ID,required"`
+OAuthApplePrivateKey string `env:"OAUTH_APPLE_PRIVATE_KEY,required"`
+{{- end}}

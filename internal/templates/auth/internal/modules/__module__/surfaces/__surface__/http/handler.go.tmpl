@@ -1,0 +1,22 @@
+package http
+
+import (
+	gen "{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/http/gen"
+	"{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/service"
+	"{{.GoModule}}/internal/modules/{{.Module}}/social"
+)
+
+//go:generate go tool oapi-codegen -config ../../../../../../api/oapi-codegen/{{.Module}}-{{.Surface}}.yaml ../../../../../../api/openapi/{{.SpecFile}}
+
+// Handler implements the generated strict server interface; the compile-time
+// assertion below breaks the build when the spec and this file drift apart.
+type Handler struct {
+	svc    service.Service
+	social *social.Registry
+}
+
+func New(svc service.Service, socialReg *social.Registry) *Handler {
+	return &Handler{svc: svc, social: socialReg}
+}
+
+var _ gen.StrictServerInterface = (*Handler)(nil)

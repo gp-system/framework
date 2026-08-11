@@ -1,0 +1,24 @@
+JWT:                  cfg.JWT,
+AuthDB:               pg.NewDB(pool),
+AuthTransactor:       pg.NewTransactor(pool),
+AppBaseURL:           cfg.AppBaseURL,
+EmailVerificationTTL: cfg.EmailVerificationTTL,
+PasswordResetTTL:     cfg.PasswordResetTTL,
+{{- if .HasSocialProvider "discord"}}
+OAuthDiscordClientID:     cfg.OAuthDiscordClientID,
+OAuthDiscordClientSecret: cfg.OAuthDiscordClientSecret,
+{{- end}}
+{{- if .HasSocialProvider "facebook"}}
+OAuthFacebookClientID:     cfg.OAuthFacebookClientID,
+OAuthFacebookClientSecret: cfg.OAuthFacebookClientSecret,
+{{- end}}
+{{- if .HasSocialProvider "google"}}
+OAuthGoogleClientID:     cfg.OAuthGoogleClientID,
+OAuthGoogleClientSecret: cfg.OAuthGoogleClientSecret,
+{{- end}}
+{{- if .HasSocialProvider "apple"}}
+OAuthAppleClientID:   cfg.OAuthAppleClientID,
+OAuthAppleTeamID:     cfg.OAuthAppleTeamID,
+OAuthAppleKeyID:      cfg.OAuthAppleKeyID,
+OAuthApplePrivateKey: cfg.OAuthApplePrivateKey,
+{{- end}}

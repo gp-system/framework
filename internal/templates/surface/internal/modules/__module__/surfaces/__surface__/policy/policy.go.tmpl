@@ -1,0 +1,11 @@
+package policy
+
+import (
+	kitpolicy "github.com/gp-system/auth/policy"
+)
+
+func New() *kitpolicy.Registry {
+	reg := kitpolicy.NewRegistry()
+	// gpsystem:policies
+	return reg
+}

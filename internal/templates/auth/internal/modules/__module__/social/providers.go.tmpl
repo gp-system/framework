@@ -1,0 +1,88 @@
+// providers.go registers the {{.Module}} module's social login providers.
+// Add another one by importing its goth package and adding a Register call
+// below the gpsystem:social-providers marker; nothing else in this module
+// (registry, handlers, TypeSpec operations, service, repository) needs to
+// change. A provider with no goth package works the same way once it
+// implements goth.Provider (BeginAuth, UnmarshalSession, FetchUser); see
+// https://pkg.go.dev/github.com/markbates/goth and the ~60 packages under
+// https://github.com/markbates/goth/tree/master/providers for reference.
+//
+// Example (a fictional "gitlab" provider, once ClientID/ClientSecret fields
+// exist on Config and are wired from env the same way the others below are):
+//
+//	import "github.com/markbates/goth/providers/gitlab"
+//	...
+//	if cfg.GitLab.ClientID != "" {
+//		reg.Register("gitlab", gitlab.New(cfg.GitLab.ClientID, cfg.GitLab.ClientSecret, callbackURL(cfg, "gitlab")))
+//	}
+package social
+
+import (
+{{- if .HasSocialProvider "discord"}}
+	"github.com/markbates/goth/providers/discord"
+{{- end}}
+{{- if .HasSocialProvider "facebook"}}
+	"github.com/markbates/goth/providers/facebook"
+{{- end}}
+{{- if .HasSocialProvider "google"}}
+	"github.com/markbates/goth/providers/google"
+{{- end}}
+{{- if .HasSocialProvider "apple"}}
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/markbates/goth/providers/apple"
+{{- end}}
+)
+
+// callbackURL builds a provider's OAuth redirect URL from the module's
+// configured public base URL.
+func callbackURL(cfg Config, provider string) string {
+	return cfg.AppBaseURL + "{{.BasePath}}/social/" + provider + "/callback"
+}
+
+// RegisterProviders wires every configured provider into reg. Called once
+// from Register{{pascal .Surface}} at startup; a provider whose ClientID is
+// empty (never configured via --social, or the env var was left unset) is
+// silently skipped rather than registered half-configured.
+func RegisterProviders(reg *Registry, cfg Config) error {
+	// gpsystem:social-providers
+{{- if .HasSocialProvider "discord"}}
+	if cfg.Discord.ClientID != "" {
+		reg.Register("discord", discord.New(cfg.Discord.ClientID, cfg.Discord.ClientSecret, callbackURL(cfg, "discord"), discord.ScopeIdentify, discord.ScopeEmail))
+	}
+{{- end}}
+{{- if .HasSocialProvider "facebook"}}
+	if cfg.Facebook.ClientID != "" {
+		reg.Register("facebook", facebook.New(cfg.Facebook.ClientID, cfg.Facebook.ClientSecret, callbackURL(cfg, "facebook"), "email"))
+	}
+{{- end}}
+{{- if .HasSocialProvider "google"}}
+	if cfg.Google.ClientID != "" {
+		reg.Register("google", google.New(cfg.Google.ClientID, cfg.Google.ClientSecret, callbackURL(cfg, "google"), "email", "profile"))
+	}
+{{- end}}
+{{- if .HasSocialProvider "apple"}}
+	if cfg.Apple.ClientID != "" {
+		// Sign in with Apple has no static client secret: it's a JWT, valid
+		// for at most 6 months, minted from the app's private key. Requesting
+		// the email scope (below) makes Apple use its form_post callback:
+		// see surfaces/{{.Surface}}/http/social.go's SocialCallbackForm.
+		now := time.Now()
+		secret, err := apple.MakeSecret(apple.SecretParams{
+			PKCS8PrivateKey: cfg.Apple.PrivateKey,
+			TeamId:          cfg.Apple.TeamID,
+			KeyId:           cfg.Apple.KeyID,
+			ClientId:        cfg.Apple.ClientID,
+			Iat:             int(now.Unix()),
+			Exp:             int(now.Add(6 * 30 * 24 * time.Hour).Unix()),
+		})
+		if err != nil {
+			return fmt.Errorf("{{.Module}}: mint apple client secret: %w", err)
+		}
+		reg.Register("apple", apple.New(cfg.Apple.ClientID, *secret, callbackURL(cfg, "apple"), http.DefaultClient, apple.ScopeEmail))
+	}
+{{- end}}
+	return nil
+}

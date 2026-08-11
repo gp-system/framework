@@ -1,0 +1,260 @@
+// Package service holds the {{.Surface}} surface's business logic:
+// registration with an email verification link, plus the forgot/reset
+// password flow. The mechanics shared by every surface (bcrypt hashing, JWT
+// issuance, refresh-token rotation) live in the module root package;
+// this service layers the account-lifecycle flows on top and delegates
+// login/refresh/logout to it.
+package service
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	kitauth "github.com/gp-system/auth"
+	"github.com/gp-system/dbx"
+	"{{.Errs.Path}}"
+	"github.com/jackc/pgx/v5/pgconn"
+
+	"{{.GoModule}}/internal/modules/{{.Module}}"
+	authmail "{{.GoModule}}/internal/modules/{{.Module}}/mail"
+	"{{.GoModule}}/internal/modules/{{.Module}}/repository"
+	"{{.GoModule}}/internal/modules/{{.Module}}/social"
+)
+
+// User and TokenPair are the module root's types; aliased so handlers and
+// mappers only ever import their own surface's service package.
+type (
+	User      = {{.Module}}.User
+	TokenPair = {{.Module}}.TokenPair
+)
+
+type Service interface {
+	// gpsystem:service-interface
+	Register(ctx context.Context, name, email, password string) (User, error)
+	VerifyEmail(ctx context.Context, token string) error
+	Login(ctx context.Context, email, password string) (TokenPair, error)
+	Refresh(ctx context.Context, refreshToken string) (TokenPair, error)
+	Logout(ctx context.Context, refreshToken string) error
+	ForgotPassword(ctx context.Context, email string) error
+	ResetPassword(ctx context.Context, token, password string) error
+	// LoginWithProvider finds or creates the local account for a completed
+	// social login (see internal/modules/{{.Module}}/social) and issues a
+	// token pair for it, the same as Login.
+	LoginWithProvider(ctx context.Context, provider string, ext social.ExternalUser) (TokenPair, error)
+}
+
+type service struct {
+	repo   repository.Repository
+	core   *{{.Module}}.Service
+	tx     dbx.Transactor
+	verify *authmail.VerifyEmailNotifier
+	reset  *authmail.ResetPasswordNotifier
+	cfg    Config
+}
+
+func New(repo repository.Repository, coreSvc *{{.Module}}.Service, tx dbx.Transactor, verify *authmail.VerifyEmailNotifier, reset *authmail.ResetPasswordNotifier, cfg Config) Service {
+	return &service{
+		repo:   repo,
+		core:   coreSvc,
+		tx:     tx,
+		verify: verify,
+		reset:  reset,
+		cfg:    cfg,
+	}
+}
+
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+// gpsystem:service-methods
+
+func (s *service) Register(ctx context.Context, name, email, password string) (User, error) {
+	hash, err := {{.Module}}.HashPassword(password)
+	if err != nil {
+		return User{}, errs.Wrap(err, "{{.Module}}: hash password")
+	}
+
+	var user User
+	var verifyToken string
+	err = s.tx.WithinTransaction(ctx, func(ctx context.Context) error {
+		id, err := s.repo.InsertUser(ctx, name, email)
+		if err != nil {
+			return err
+		}
+		if err := s.repo.InsertCredential(ctx, id, hash); err != nil {
+			return err
+		}
+		if err := s.repo.AssignRole(ctx, id, "user"); err != nil {
+			return err
+		}
+
+		token, err := kitauth.NewRefreshToken()
+		if err != nil {
+			return err
+		}
+		verifyToken = token
+		expiresAt := time.Now().Add(s.cfg.EmailVerificationTTL)
+		if err := s.repo.InsertEmailVerificationToken(ctx, id, {{.Module}}.HashToken(token), expiresAt); err != nil {
+			return err
+		}
+
+		user = User{ID: id, Name: name, Email: email, Roles: []string{"user"}}
+		return nil
+	})
+	if isUniqueViolation(err) {
+		return User{}, ErrConflict
+	}
+	if err != nil {
+		return User{}, err
+	}
+
+	link := s.cfg.AppBaseURL + "/verify-email?token=" + verifyToken
+	if err := s.verify.Notify(ctx, email, authmail.VerifyEmailMail{Name: name, Link: link}); err != nil {
+		return User{}, errs.Wrap(err, "{{.Module}}: send verification email")
+	}
+	return user, nil
+}
+
+func (s *service) VerifyEmail(ctx context.Context, token string) error {
+	stored, err := s.repo.GetEmailVerificationToken(ctx, {{.Module}}.HashToken(token))
+	if err != nil {
+		return err
+	}
+	if stored == nil || stored.ConsumedAt != nil || time.Now().After(stored.ExpiresAt) {
+		return ErrInvalidToken
+	}
+	return s.tx.WithinTransaction(ctx, func(ctx context.Context) error {
+		if err := s.repo.MarkEmailVerified(ctx, stored.UserID); err != nil {
+			return err
+		}
+		return s.repo.ConsumeEmailVerificationToken(ctx, {{.Module}}.HashToken(token))
+	})
+}
+
+func (s *service) Login(ctx context.Context, email, password string) (TokenPair, error) {
+	return s.core.Authenticate(ctx, email, password)
+}
+
+func (s *service) Refresh(ctx context.Context, refreshToken string) (TokenPair, error) {
+	return s.core.Refresh(ctx, refreshToken)
+}
+
+func (s *service) Logout(ctx context.Context, refreshToken string) error {
+	return s.core.Revoke(ctx, refreshToken)
+}
+
+func (s *service) ForgotPassword(ctx context.Context, email string) error {
+	cred, err := s.repo.GetCredentialByEmail(ctx, email)
+	if err != nil {
+		return err
+	}
+	if cred == nil {
+		// Do not leak whether the address is registered.
+		return nil
+	}
+
+	token, err := kitauth.NewRefreshToken()
+	if err != nil {
+		return err
+	}
+	expiresAt := time.Now().Add(s.cfg.PasswordResetTTL)
+	if err := s.repo.InsertPasswordResetToken(ctx, cred.ID, {{.Module}}.HashToken(token), expiresAt); err != nil {
+		return err
+	}
+
+	link := s.cfg.AppBaseURL + "/reset-password?token=" + token
+	if err := s.reset.Notify(ctx, email, authmail.ResetPasswordMail{Name: cred.Name, Link: link}); err != nil {
+		return errs.Wrap(err, "{{.Module}}: send password reset email")
+	}
+	return nil
+}
+
+func (s *service) ResetPassword(ctx context.Context, token, password string) error {
+	stored, err := s.repo.GetPasswordResetToken(ctx, {{.Module}}.HashToken(token))
+	if err != nil {
+		return err
+	}
+	if stored == nil || stored.ConsumedAt != nil || time.Now().After(stored.ExpiresAt) {
+		return ErrInvalidToken
+	}
+
+	hash, err := {{.Module}}.HashPassword(password)
+	if err != nil {
+		return errs.Wrap(err, "{{.Module}}: hash password")
+	}
+
+	return s.tx.WithinTransaction(ctx, func(ctx context.Context) error {
+		if err := s.repo.UpdateCredentialPassword(ctx, stored.UserID, hash); err != nil {
+			return err
+		}
+		if err := s.repo.ConsumePasswordResetToken(ctx, {{.Module}}.HashToken(token)); err != nil {
+			return err
+		}
+		// A reset invalidates any outstanding session.
+		return s.repo.RevokeAllRefreshTokens(ctx, stored.UserID)
+	})
+}
+
+// LoginWithProvider finds or creates the local account for ext, an already
+// code-exchanged social login, and issues a token pair for it via the same
+// shared Service.IssueTokens every other login path uses.
+//
+// A provider profile already linked (provider, providerKey) logs straight
+// in. A first-time login for that identity is matched to an existing user
+// by email only when that user's own email is verified: an unverified
+// email is not proof of ownership, so linking to it would let a same-address
+// social account take the account over; that case is a 409 conflict
+// instead. Otherwise a brand new, pre-verified user is created: the
+// provider already vouched for the address.
+func (s *service) LoginWithProvider(ctx context.Context, provider string, ext social.ExternalUser) (TokenPair, error) {
+	if ext.Email == "" {
+		return TokenPair{}, ErrSocialEmailRequired
+	}
+
+	if cred, err := s.repo.GetCredentialByProvider(ctx, provider, ext.ProviderKey); err != nil {
+		return TokenPair{}, err
+	} else if cred != nil {
+		return s.core.IssueTokens(ctx, cred.User)
+	}
+
+	var account repository.User
+	err := s.tx.WithinTransaction(ctx, func(ctx context.Context) error {
+		existing, err := s.repo.GetUserByEmail(ctx, ext.Email)
+		if err != nil {
+			return err
+		}
+		switch {
+		case existing == nil:
+			name := ext.Name
+			if name == "" {
+				name = ext.Email
+			}
+			id, err := s.repo.InsertUser(ctx, name, ext.Email)
+			if err != nil {
+				return err
+			}
+			if err := s.repo.MarkEmailVerified(ctx, id); err != nil {
+				return err
+			}
+			if err := s.repo.AssignRole(ctx, id, "user"); err != nil {
+				return err
+			}
+			account = repository.User{ID: id, Name: name, Email: ext.Email, EmailVerified: true}
+		case !existing.EmailVerified:
+			return ErrConflict
+		default:
+			account = *existing
+		}
+		return s.repo.InsertSocialCredential(ctx, account.ID, provider, ext.ProviderKey)
+	})
+	if isUniqueViolation(err) {
+		return TokenPair{}, ErrConflict
+	}
+	if err != nil {
+		return TokenPair{}, err
+	}
+	return s.core.IssueTokens(ctx, account)
+}

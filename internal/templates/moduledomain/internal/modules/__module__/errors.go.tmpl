@@ -1,0 +1,19 @@
+package {{.Module}}
+
+import (
+	"net/http"
+
+	"{{.Errs.Path}}"
+)
+
+// ErrNotFound is the module's "no such record" sentinel: the module root
+// returns it when the repository reports a missing row, surface services
+// pass it through, and handlers map it to a 404 response. Handlers check
+// this (or a surface service's re-export of it), never a repository
+// sentinel. When the sentinel naturally originates in the repository package
+// instead, define it there and re-export it here
+// (var ErrNotFound = repository.ErrNotFound): the module root imports
+// repository, never the other way around.
+var ErrNotFound = errs.Define("{{snake .Module}}_not_found",
+	errs.Public("The requested {{.Module}} record was not found."),
+	errs.Status(http.StatusNotFound))

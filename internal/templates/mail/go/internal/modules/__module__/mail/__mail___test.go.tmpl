@@ -1,0 +1,19 @@
+package mail
+
+import (
+	"testing"
+
+	kitmail "github.com/gp-system/mail"
+)
+
+func Test{{pascal .Mail}}Notifier_Notify(t *testing.T) {
+	mem := kitmail.NewMemory()
+	n := New{{pascal .Mail}}Notifier(mem)
+
+	if err := n.Notify(t.Context(), "to@example.com", {{pascal .Mail}}{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(mem.Messages()) != 1 {
+		t.Fatalf("Messages() len = %d, want 1", len(mem.Messages()))
+	}
+}

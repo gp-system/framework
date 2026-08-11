@@ -1,0 +1,14 @@
+package listeners
+
+import (
+	"context"
+
+	{{.Module}}surfaces "{{.GoModule}}/internal/modules/{{.Module}}/surfaces"
+	{{.EventModule}}events "{{.GoModule}}/internal/modules/{{.EventModule}}/events"
+)
+
+func {{camel .Listener}}(deps {{.Module}}surfaces.Dependencies) func(context.Context, {{.EventModule}}events.{{pascal .Event}}) error {
+	return func(ctx context.Context, ev {{.EventModule}}events.{{pascal .Event}}) error {
+		return nil
+	}
+}

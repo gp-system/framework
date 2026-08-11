@@ -1,0 +1,18 @@
+-- +goose Up
+-- +goose StatementBegin
+CREATE TABLE outbox_events (
+    id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    event_id     uuid        NOT NULL UNIQUE,
+    event_name   text        NOT NULL,
+    payload      jsonb       NOT NULL,
+    metadata     jsonb       NOT NULL DEFAULT '{}'::jsonb,
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    published_at timestamptz
+);
+CREATE INDEX outbox_events_unpublished_idx ON outbox_events (id) WHERE published_at IS NULL;
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+DROP TABLE outbox_events;
+-- +goose StatementEnd

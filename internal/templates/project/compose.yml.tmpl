@@ -1,0 +1,195 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  mailpit:
+    image: axllent/mailpit:latest
+    networks:
+      - default
+      - proxynet
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.{{camel .Project}}Mailpit.rule=Host(`${MAILPIT_HOST}`)
+      - traefik.http.routers.{{camel .Project}}Mailpit.entrypoints=web
+      - traefik.http.routers.{{camel .Project}}MailpitSsl.rule=Host(`${MAILPIT_HOST}`)
+      - traefik.http.routers.{{camel .Project}}MailpitSsl.entrypoints=websecure
+      - traefik.http.routers.{{camel .Project}}MailpitSsl.tls.certresolver=letsEncrypt
+      - traefik.http.services.{{camel .Project}}Mailpit.loadbalancer.server.port=8025
+
+  rustfs:
+    image: rustfs/rustfs:latest
+    command: server /data --console-address ":9001"
+    environment:
+      RUSTFS_ROOT_USER: ${S3_ACCESS_KEY}
+      RUSTFS_ROOT_PASSWORD: ${S3_SECRET_KEY}
+    volumes:
+      - rustfsdata:/data
+    networks:
+      - default
+      - proxynet
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.{{camel .Project}}Rustfs.rule=Host(`${RUSTFS_S3_HOST}`)
+      - traefik.http.routers.{{camel .Project}}Rustfs.entrypoints=web
+      - traefik.http.routers.{{camel .Project}}Rustfs.service={{camel .Project}}Rustfs
+      - traefik.http.routers.{{camel .Project}}RustfsSsl.rule=Host(`${RUSTFS_S3_HOST}`)
+      - traefik.http.routers.{{camel .Project}}RustfsSsl.entrypoints=websecure
+      - traefik.http.routers.{{camel .Project}}RustfsSsl.tls.certresolver=letsEncrypt
+      - traefik.http.routers.{{camel .Project}}RustfsSsl.service={{camel .Project}}Rustfs
+      - traefik.http.services.{{camel .Project}}Rustfs.loadbalancer.server.port=9000
+      - traefik.http.routers.{{camel .Project}}RustfsConsole.rule=Host(`${RUSTFS_CONSOLE_HOST}`)
+      - traefik.http.routers.{{camel .Project}}RustfsConsole.entrypoints=web
+      - traefik.http.routers.{{camel .Project}}RustfsConsole.service={{camel .Project}}RustfsConsole
+      - traefik.http.routers.{{camel .Project}}RustfsConsoleSsl.rule=Host(`${RUSTFS_CONSOLE_HOST}`)
+      - traefik.http.routers.{{camel .Project}}RustfsConsoleSsl.entrypoints=websecure
+      - traefik.http.routers.{{camel .Project}}RustfsConsoleSsl.tls.certresolver=letsEncrypt
+      - traefik.http.routers.{{camel .Project}}RustfsConsoleSsl.service={{camel .Project}}RustfsConsole
+      - traefik.http.services.{{camel .Project}}RustfsConsole.loadbalancer.server.port=9001
+
+  rustfs-init:
+    image: amazon/aws-cli
+    depends_on:
+      - rustfs
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
+      AWS_DEFAULT_REGION: ${S3_REGION}
+    entrypoint: ["sh", "-c"]
+    command: ["sleep 3; aws --endpoint-url http://rustfs:9000 s3 mb s3://${S3_BUCKET} || true"]
+    restart: "no"
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+      args:
+        CMD: migrate
+        USER_ID: "${USER_ID}"
+        GROUP_ID: "${GROUP_ID}"
+      {{- if .Kit.Replace}}
+      additional_contexts:
+        kit: {{.Kit.Replace}}
+        {{- if .Errs.Replace}}
+        errs: {{.Errs.Replace}}
+        {{- end}}
+        {{- range .Mods}}
+        {{- if .Replace}}
+        {{.Name}}: {{.Replace}}
+        {{- end}}
+        {{- end}}
+      {{- end}}
+    command: ["sh", "-c", "exec go run ./cmd/migrate up"]
+    env_file: .env
+    environment:
+      OTEL_SERVICE_NAME: {{.Project}}-migrate
+    volumes:
+      - .:/src
+      {{- if .Kit.Replace}}
+      - {{.Kit.Replace}}:{{.Kit.Mount}}:ro
+      {{- end}}
+      {{- if .Errs.Replace}}
+      - {{.Errs.Replace}}:{{.Errs.Mount}}:ro
+      {{- end}}
+      {{- range .Mods}}
+      {{- if .Replace}}
+      - {{.Replace}}:{{.Mount}}:ro
+      {{- end}}
+      {{- end}}
+      - gomodcache:/gomodcache
+      - gocache:/gocache
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+      args:
+        CMD: worker
+        USER_ID: "${USER_ID}"
+        GROUP_ID: "${GROUP_ID}"
+      {{- if .Kit.Replace}}
+      additional_contexts:
+        kit: {{.Kit.Replace}}
+        {{- if .Errs.Replace}}
+        errs: {{.Errs.Replace}}
+        {{- end}}
+        {{- range .Mods}}
+        {{- if .Replace}}
+        {{.Name}}: {{.Replace}}
+        {{- end}}
+        {{- end}}
+      {{- end}}
+    env_file: .env
+    environment:
+      OTEL_SERVICE_NAME: {{.Project}}-worker
+    volumes:
+      - .:/src
+      {{- if .Kit.Replace}}
+      - {{.Kit.Replace}}:{{.Kit.Mount}}:ro
+      {{- end}}
+      {{- if .Errs.Replace}}
+      - {{.Errs.Replace}}:{{.Errs.Mount}}:ro
+      {{- end}}
+      {{- range .Mods}}
+      {{- if .Replace}}
+      - {{.Replace}}:{{.Mount}}:ro
+      {{- end}}
+      {{- end}}
+      - gomodcache:/gomodcache
+      - gocache:/gocache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # gpsystem:services
+
+  # Uncomment to ship telemetry locally (then set OTEL_DEV_MODE=false and
+  # OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317 in .env):
+  # otel-collector:
+  #   image: otel/opentelemetry-collector-contrib:latest
+  #   command: ["--config=/etc/otelcol/config.yaml"]
+  #   volumes:
+  #     - ./deploy/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+
+networks:
+  proxynet:
+    external: true
+
+volumes:
+  pgdata:
+  rustfsdata:
+  gomodcache:
+  gocache:

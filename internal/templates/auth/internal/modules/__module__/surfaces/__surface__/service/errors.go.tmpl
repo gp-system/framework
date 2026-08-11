@@ -1,0 +1,25 @@
+package service
+
+import (
+	"errors"
+
+	"{{.GoModule}}/internal/modules/{{.Module}}"
+)
+
+var (
+	// ErrConflict marks an email already registered; the handler maps it to 409.
+	ErrConflict = errors.New("{{.Module}}: email already registered")
+	// ErrInvalidCredentials maps to 401 without leaking which part failed.
+	// Defined at the module root (shared by every surface); re-exported so
+	// handlers only import their own service package.
+	ErrInvalidCredentials = {{.Module}}.ErrInvalidCredentials
+	// ErrEmailNotVerified maps to 403; returned by Login before a registered
+	// user has verified their email. Re-exported from the module root.
+	ErrEmailNotVerified = {{.Module}}.ErrEmailNotVerified
+	// ErrInvalidToken maps to 401; covers an unknown, expired or
+	// already-consumed email verification or password reset token.
+	ErrInvalidToken = errors.New("{{.Module}}: invalid or expired token")
+	// ErrSocialEmailRequired maps to 422; LoginWithProvider refuses a
+	// provider profile with no email, since users.email is the account key.
+	ErrSocialEmailRequired = errors.New("{{.Module}}: social provider did not return an email")
+)

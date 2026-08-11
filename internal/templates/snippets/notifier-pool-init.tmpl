@@ -1,0 +1,9 @@
+{{if .Realtime -}}
+pub := broadcast.MustNewPublisher(ctx, cfg.Realtime.BroadcastValkey(), cfg.Realtime.Broadcast)
+{{end -}}
+notifier := notify.NewHub(
+	notify.NewMailChannel(mailer),
+	notifydatabase.NewChannel(notifydatabase.NewStore(pg.NewDB(pool))),
+	{{if .Realtime}}notify.NewBroadcastChannel(pub, cfg.Realtime.Broadcast.ChannelPrefix),
+	{{end -}}
+)

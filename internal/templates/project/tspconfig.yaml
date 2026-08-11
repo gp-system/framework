@@ -1,0 +1,10 @@
+emit:
+  - "@typespec/openapi3"
+options:
+  "@typespec/openapi3":
+    emitter-output-dir: "{project-root}/api/openapi"
+    openapi-versions:
+      - "3.0.0"
+    file-type: yaml
+    output-file: "{service-name}.yaml"
+    omit-unreachable-types: true

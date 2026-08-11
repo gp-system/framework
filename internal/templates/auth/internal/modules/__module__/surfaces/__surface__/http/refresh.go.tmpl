@@ -1,0 +1,23 @@
+package http
+
+import (
+	"context"
+	"errors"
+	"net/http"
+
+	gen "{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/http/gen"
+	"{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/http/mapper"
+	"{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/service"
+)
+
+// Refresh handles POST {{.BasePath}}/refresh.
+func (h *Handler) Refresh(ctx context.Context, req gen.RefreshRequest) (gen.RefreshResponse, error) {
+	pair, err := h.svc.Refresh(ctx, req.Body.RefreshToken)
+	if errors.Is(err, service.ErrInvalidCredentials) {
+		return gen.Refresh401JSONResponse(mapper.Problem(http.StatusUnauthorized, "invalid or expired refresh token")), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return gen.Refresh200JSONResponse(mapper.ToTokenPair(pair)), nil
+}

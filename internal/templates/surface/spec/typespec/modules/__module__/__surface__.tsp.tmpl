@@ -1,0 +1,23 @@
+import "@typespec/http";
+import "@typespec/openapi";
+
+import "../../shared/errors.tsp";
+import "../../shared/paginator.tsp";
+import "./models/{{.Surface}}.tsp";
+
+using Http;
+using OpenAPI;
+
+@service(#{ title: "{{.Project}} {{.Module}} {{.Surface}}" })
+@server("/api/v1{{.BasePath}}", "{{.Module}} {{.Surface}} base path")
+namespace {{.Namespace}};
+
+@tag("{{.Module}}")
+interface {{pascal .Module}}{{pascal .Surface}} {
+  // gpsystem:operations
+  @get
+  @route("/")
+  @operationId("List{{pascal .Module}}")
+  @summary("List {{.Module}} items")
+  list(): {{pascal .Module}}Item[];
+}

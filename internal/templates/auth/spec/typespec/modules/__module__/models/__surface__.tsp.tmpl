@@ -1,0 +1,82 @@
+import "@typespec/http";
+
+using Http;
+
+namespace {{.Namespace}};
+
+model RegisterPayload {
+  @maxLength(100)
+  name: string;
+
+  @maxLength(255)
+  email: string;
+
+  @minLength(8)
+  @maxLength(72)
+  password: string;
+}
+
+model VerifyEmailPayload {
+  token: string;
+}
+
+model LoginPayload {
+  email: string;
+  password: string;
+}
+
+model RefreshTokenPayload {
+  refreshToken: string;
+}
+
+model ForgotPasswordPayload {
+  email: string;
+}
+
+model ResetPasswordPayload {
+  token: string;
+
+  @minLength(8)
+  @maxLength(72)
+  password: string;
+}
+
+model AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  emailVerified: boolean;
+  roles: string[];
+  permissions: string[];
+}
+
+model TokenPair {
+  accessToken: string;
+  refreshToken: string;
+
+  /** Access token lifetime in seconds. */
+  expiresIn: int64;
+
+  user: AuthUser;
+}
+
+// Social login: /social/{provider} redirects here, embedding a signed,
+// self-verifying state parameter (see internal/modules/{{.Module}}/social).
+model SocialBeginResponse {
+  @statusCode statusCode: 302;
+  @header location: string;
+}
+
+// The query-string callback most providers use (Discord, Google, Facebook).
+model SocialCallbackQuery {
+  @query code?: string;
+  @query state?: string;
+}
+
+// Apple's form_post callback: its consent screen always uses
+// response_mode=form_post once the email/name scope is requested, so Apple
+// posts these as application/x-www-form-urlencoded instead of a query string.
+model SocialCallbackForm {
+  code?: string;
+  state?: string;
+}

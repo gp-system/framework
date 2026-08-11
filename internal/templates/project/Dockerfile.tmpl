@@ -1,0 +1,44 @@
+# syntax=docker/dockerfile:1
+FROM golang:1.25-alpine AS base
+WORKDIR /src
+
+# Dev: the source (and kit-replace checkout) is bind-mounted in by compose;
+# after a code change `docker compose restart <service>` is enough: go run
+# recompiles from the mounted source. No source copy, no module download at
+# build time; the caches live on named volumes.
+FROM base AS development
+ARG USER_ID=1000
+ARG GROUP_ID=1000
+RUN addgroup -g ${GROUP_ID} -S app && adduser -u ${USER_ID} -S -G app app \
+ && mkdir -p /gomodcache /gocache && chown app:app /gomodcache /gocache
+ENV GOMODCACHE=/gomodcache GOCACHE=/gocache
+USER app
+ARG CMD
+ENV CMD=${CMD}
+CMD ["sh", "-c", "exec go run ./cmd/${CMD}"]
+
+FROM base AS build
+{{- if .Kit.Replace}}
+COPY --from=kit / {{.Kit.Mount}}
+{{- end}}
+{{- if .Errs.Replace}}
+COPY --from=errs / {{.Errs.Mount}}
+{{- end}}
+{{- range .Mods}}
+{{- if .Replace}}
+COPY --from={{.Name}} / {{.Mount}}
+{{- end}}
+{{- end}}
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+COPY . .
+ARG CMD
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 go build -trimpath -o /out/app ./cmd/${CMD}
+
+FROM alpine:3.22 AS production
+RUN apk add --no-cache ca-certificates tzdata
+COPY --from=build /out/app /usr/local/bin/app
+USER nobody
+ENTRYPOINT ["/usr/local/bin/app"]

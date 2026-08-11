@@ -1,0 +1,5 @@
+{{if eq .DB "bun" -}}
+Dispatcher: outbox.NewDispatcher(outboxbunx.NewStore(bunDB)),
+{{- else -}}
+Dispatcher: outbox.NewDispatcher(outbox.NewStore(pg.NewDB(pool))),
+{{- end}}

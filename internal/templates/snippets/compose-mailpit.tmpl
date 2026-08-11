@@ -1,0 +1,14 @@
+mailpit:
+  image: axllent/mailpit:latest
+  networks:
+    - default
+    - proxynet
+  restart: unless-stopped
+  labels:
+    - traefik.enable=true
+    - traefik.http.routers.{{camel .Project}}Mailpit.rule=Host(`${MAILPIT_HOST}`)
+    - traefik.http.routers.{{camel .Project}}Mailpit.entrypoints=web
+    - traefik.http.routers.{{camel .Project}}MailpitSsl.rule=Host(`${MAILPIT_HOST}`)
+    - traefik.http.routers.{{camel .Project}}MailpitSsl.entrypoints=websecure
+    - traefik.http.routers.{{camel .Project}}MailpitSsl.tls.certresolver=letsEncrypt
+    - traefik.http.services.{{camel .Project}}Mailpit.loadbalancer.server.port=8025

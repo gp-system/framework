@@ -1,0 +1,50 @@
+package notifications
+
+import (
+	"context"
+	"embed"
+
+	kitmail "github.com/gp-system/mail"
+	"github.com/gp-system/notify"
+)
+
+//go:embed templates/{{snake .Notification}}.html.tmpl templates/{{snake .Notification}}.txt.tmpl
+var {{camel .Notification}}TemplatesFS embed.FS
+
+// {{pascal .Notification}} is the payload delivered to every channel this
+// notification declares in Via. Add whatever fields ToMail/ToDatabase need.
+type {{pascal .Notification}} struct {
+}
+
+var (
+	_ notify.Notification = {{pascal .Notification}}{}
+	_ notify.Mailable     = {{pascal .Notification}}{}
+	_ notify.Databasable  = {{pascal .Notification}}{}
+)
+
+// NotificationName is the stable, persisted identifier: the database channel
+// stores it, and spans/logs carry it.
+func ({{pascal .Notification}}) NotificationName() string { return "{{.Module}}.{{camel .Notification}}" }
+
+// Via lists the channels this notification goes out on. Add
+// notify.ChannelBroadcast once the project has a realtime gateway wired
+// (`gpsystem add realtime`) and this notification implements
+// notify.Broadcastable (or relies on the ToDatabase fallback).
+func ({{pascal .Notification}}) Via(ctx context.Context, r notify.Recipient) []string {
+	return []string{notify.ChannelDatabase, notify.ChannelMail}
+}
+
+// ToMail builds the mail channel's message. Leaving To unset routes it to
+// r.Email/r.Name automatically.
+func (n {{pascal .Notification}}) ToMail(ctx context.Context, r notify.Recipient) (*kitmail.Message, error) {
+	return kitmail.NewMessage().
+		WithSubject("TODO: subject for {{pascal .Notification}}").
+		WithBody(kitmail.Template({{camel .Notification}}TemplatesFS, "templates/{{snake .Notification}}.html.tmpl", n).
+			WithTextTemplate("templates/{{snake .Notification}}.txt.tmpl")), nil
+}
+
+// ToDatabase builds the database channel's stored payload; returning the
+// notification itself is the common case.
+func (n {{pascal .Notification}}) ToDatabase(ctx context.Context, r notify.Recipient) (any, error) {
+	return n, nil
+}

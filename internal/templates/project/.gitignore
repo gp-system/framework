@@ -1,0 +1,9 @@
+/bin/
+*.test
+*.out
+.env
+.env.*
+!.env.example
+node_modules/
+tsp-output/
+tmp/

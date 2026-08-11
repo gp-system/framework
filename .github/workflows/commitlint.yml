@@ -1,0 +1,23 @@
+name: Commitlint
+
+on:
+  pull_request_target:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: commitlint-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  commitlint:
+    runs-on: ubuntu-latest
+    steps:
+      # Checks out the base branch (trusted workflow/config), not the PR
+      # head: commitlint only needs to read commit messages via the API.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: wagoid/commitlint-github-action@v6

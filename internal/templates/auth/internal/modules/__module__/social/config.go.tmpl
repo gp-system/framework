@@ -1,0 +1,42 @@
+package social
+
+// Config holds the {{.Module}} module's social login settings: one
+// sub-struct per configured provider, plus the base URL each provider's
+// redirect URL is built from (the same value the account-lifecycle emails
+// use). The OAuth state parameter is signed with the module's own JWT
+// secret instead (see NewRegistry); no separate signing key here.
+type Config struct {
+	AppBaseURL string
+{{- if .HasSocialProvider "discord"}}
+	Discord ProviderConfig
+{{- end}}
+{{- if .HasSocialProvider "facebook"}}
+	Facebook ProviderConfig
+{{- end}}
+{{- if .HasSocialProvider "google"}}
+	Google ProviderConfig
+{{- end}}
+{{- if .HasSocialProvider "apple"}}
+	Apple AppleConfig
+{{- end}}
+}
+
+// ProviderConfig is the client id/secret pair every plain OAuth2 provider
+// needs. A provider whose ClientID is empty is skipped by RegisterProviders
+// rather than registered half-configured.
+type ProviderConfig struct {
+	ClientID     string
+	ClientSecret string
+}
+{{- if .HasSocialProvider "apple"}}
+
+// AppleConfig holds Sign in with Apple's JWT client-secret ingredients:
+// Apple issues no static client secret, so RegisterProviders mints one at
+// startup from these (see providers.go's apple.MakeSecret call).
+type AppleConfig struct {
+	ClientID   string
+	TeamID     string
+	KeyID      string
+	PrivateKey string
+}
+{{- end}}

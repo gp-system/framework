@@ -1,0 +1,31 @@
+[tools]
+go = "1.25"
+golangci-lint = "2.12.2"
+node = "24"
+
+[tasks.build]
+description = "Build all packages"
+run = "go build ./..."
+
+[tasks.test]
+description = "Run unit tests"
+run = "go test ./..."
+
+[tasks.vet]
+description = "Run go vet"
+run = "go vet ./..."
+
+[tasks.lint]
+description = "Run golangci-lint"
+run = "golangci-lint run"
+
+[tasks.commitlint]
+description = "Lint the last commit message with commitlint"
+run = "npx --no-install commitlint --last --verbose"
+
+[tasks."hooks:install"]
+description = "Install npm deps and enable the commit-msg git hook"
+run = [
+  "npm ci --no-audit --no-fund",
+  "git config core.hooksPath .githooks",
+]

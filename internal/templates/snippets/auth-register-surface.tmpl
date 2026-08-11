@@ -1,0 +1,53 @@
+func Register{{pascal .Surface}}(router chi.Router, deps Dependencies) {
+	{{camel .Surface}}Repo := repository.New(deps.AuthDB)
+	{{camel .Surface}}Core := {{.Module}}.New({{camel .Surface}}Repo, deps.JWT)
+	verifyNotifier := authmail.NewVerifyEmailNotifier(deps.Mailer)
+	resetNotifier := authmail.NewResetPasswordNotifier(deps.Mailer)
+	{{camel .Surface}}Svc := {{.Surface}}service.New({{camel .Surface}}Repo, {{camel .Surface}}Core, deps.AuthTransactor, verifyNotifier, resetNotifier, {{.Surface}}service.Config{
+		AppBaseURL:           deps.AppBaseURL,
+		EmailVerificationTTL: deps.EmailVerificationTTL,
+		PasswordResetTTL:     deps.PasswordResetTTL,
+	})
+	{{camel .Surface}}Social := social.NewRegistry(deps.JWT.Secret)
+	if err := social.RegisterProviders({{camel .Surface}}Social, social.Config{
+		AppBaseURL: deps.AppBaseURL,
+		{{- if .HasSocialProvider "discord"}}
+		Discord: social.ProviderConfig{ClientID: deps.OAuthDiscordClientID, ClientSecret: deps.OAuthDiscordClientSecret},
+		{{- end}}
+		{{- if .HasSocialProvider "facebook"}}
+		Facebook: social.ProviderConfig{ClientID: deps.OAuthFacebookClientID, ClientSecret: deps.OAuthFacebookClientSecret},
+		{{- end}}
+		{{- if .HasSocialProvider "google"}}
+		Google: social.ProviderConfig{ClientID: deps.OAuthGoogleClientID, ClientSecret: deps.OAuthGoogleClientSecret},
+		{{- end}}
+		{{- if .HasSocialProvider "apple"}}
+		Apple: social.AppleConfig{ClientID: deps.OAuthAppleClientID, TeamID: deps.OAuthAppleTeamID, KeyID: deps.OAuthAppleKeyID, PrivateKey: deps.OAuthApplePrivateKey},
+		{{- end}}
+	}); err != nil {
+		// A startup-time misconfiguration (e.g. a malformed Apple private
+		// key): Register{{pascal .Surface}} has no error return, matching
+		// every other module wiring call in main.go.
+		panic("{{.Module}}: register social providers: " + err.Error())
+	}
+	{{camel .Surface}}Handler := {{.Surface}}http.New({{camel .Surface}}Svc, {{camel .Surface}}Social)
+	{{camel .Surface}}Policies := {{.Surface}}policy.New()
+	router.Route("{{.BasePath}}", func(r chi.Router) {
+		// gpsystem:surface-middleware
+		{{.GenPackage}}.HandlerWithOptions({{.GenPackage}}.NewStrictHandlerWithOptions(
+			{{camel .Surface}}Handler,
+			[]{{.GenPackage}}.StrictMiddlewareFunc{
+				server.StrictValidator[{{.GenPackage}}.StrictHandlerFunc](nil),
+				// Last = outermost: authorization runs before validation.
+				kitpolicy.Enforcer[{{.GenPackage}}.StrictHandlerFunc]({{camel .Surface}}Policies, {{.GenPackage}}.PermissionByOperation, {{.GenPackage}}.PolicyByOperation),
+			},
+			{{.GenPackage}}.StrictHTTPServerOptions{
+				RequestErrorHandlerFunc:  httperr.WriteBadRequest,
+				ResponseErrorHandlerFunc: server.WriteError,
+			},
+		), {{.GenPackage}}.ChiServerOptions{
+			BaseRouter:       r,
+			ErrorHandlerFunc: httperr.WriteBadRequest,
+		})
+	})
+}
+

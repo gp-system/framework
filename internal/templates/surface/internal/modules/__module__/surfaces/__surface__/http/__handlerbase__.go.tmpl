@@ -1,0 +1,18 @@
+package http
+
+import (
+	"context"
+
+	gen "{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/http/gen"
+	"{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/service"
+)
+
+func (h *Handler) List{{pascal .Module}}(ctx context.Context, _ gen.List{{pascal .Module}}Request) (gen.List{{pascal .Module}}Response, error) {
+	items, err := h.svc.List{{pascal .Module}}(ctx)
+	if err != nil {
+		return nil, service.ErrList{{pascal .Module}}.Wrap(err, "{{.Surface}}: list {{.Module}}")
+	}
+	return gen.List{{pascal .Module}}200JSONResponse(items), nil
+}
+
+// gpsystem:handlers

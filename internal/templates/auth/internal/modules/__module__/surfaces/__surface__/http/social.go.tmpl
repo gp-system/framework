@@ -1,0 +1,80 @@
+package http
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"net/url"
+
+	gen "{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/http/gen"
+	"{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/http/mapper"
+	"{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/service"
+	"{{.GoModule}}/internal/modules/{{.Module}}/social"
+)
+
+// SocialBegin handles GET {{.BasePath}}/social/{provider}: redirects the
+// caller to the named provider's OAuth consent screen.
+func (h *Handler) SocialBegin(ctx context.Context, req gen.SocialBeginRequest) (gen.SocialBeginResponse, error) {
+	authURL, err := h.social.BeginURL(req.Provider)
+	if errors.Is(err, social.ErrUnknownProvider) {
+		return gen.SocialBegin404JSONResponse(mapper.Problem(http.StatusNotFound, "unknown social provider")), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return gen.SocialBegin302Response{Headers: gen.SocialBegin302ResponseHeaders{Location: authURL}}, nil
+}
+
+// SocialCallback handles GET {{.BasePath}}/social/{provider}/callback: the
+// query-string callback most providers use (Discord, Google, Facebook, ...).
+func (h *Handler) SocialCallback(ctx context.Context, req gen.SocialCallbackRequest) (gen.SocialCallbackResponse, error) {
+	values := url.Values{}
+	if req.Params.Code != nil {
+		values.Set("code", *req.Params.Code)
+	}
+	if req.Params.State != nil {
+		values.Set("state", *req.Params.State)
+	}
+	pair, err := h.completeSocial(ctx, req.Provider, values)
+	if errors.Is(err, social.ErrUnknownProvider) {
+		return gen.SocialCallback404JSONResponse(mapper.Problem(http.StatusNotFound, "unknown social provider")), nil
+	}
+	if err != nil {
+		return gen.SocialCallback401JSONResponse(mapper.Problem(http.StatusUnauthorized, "social login failed")), nil
+	}
+	return gen.SocialCallback200JSONResponse(mapper.ToTokenPair(pair)), nil
+}
+
+// SocialCallbackForm handles POST {{.BasePath}}/social/{provider}/callback:
+// Apple's form_post callback. Sign in with Apple switches to this once the
+// consent screen requests the email scope (see social/providers.go), and
+// posts application/x-www-form-urlencoded instead of a query string.
+func (h *Handler) SocialCallbackForm(ctx context.Context, req gen.SocialCallbackFormRequest) (gen.SocialCallbackFormResponse, error) {
+	values := url.Values{}
+	if req.Body != nil {
+		if req.Body.Code != nil {
+			values.Set("code", *req.Body.Code)
+		}
+		if req.Body.State != nil {
+			values.Set("state", *req.Body.State)
+		}
+	}
+	pair, err := h.completeSocial(ctx, req.Provider, values)
+	if errors.Is(err, social.ErrUnknownProvider) {
+		return gen.SocialCallbackForm404JSONResponse(mapper.Problem(http.StatusNotFound, "unknown social provider")), nil
+	}
+	if err != nil {
+		return gen.SocialCallbackForm401JSONResponse(mapper.Problem(http.StatusUnauthorized, "social login failed")), nil
+	}
+	return gen.SocialCallbackForm200JSONResponse(mapper.ToTokenPair(pair)), nil
+}
+
+// completeSocial exchanges a callback's query or form values for the
+// provider's user profile, then finds-or-creates/links the local account.
+func (h *Handler) completeSocial(ctx context.Context, provider string, values url.Values) (service.TokenPair, error) {
+	ext, err := h.social.Complete(provider, values)
+	if err != nil {
+		return service.TokenPair{}, err
+	}
+	return h.svc.LoginWithProvider(ctx, provider, ext)
+}

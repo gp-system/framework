@@ -1,0 +1,48 @@
+# {{.Project}}
+
+Modular Go backend built on the [gpsystem]({{.Kit.Path}}) kit: one entry
+point per module (`cmd/<module>`), shared chassis (graceful shutdown, OTel
+telemetry, RFC 9457 errors, validation) from the kit.
+
+## Workflow
+
+The project runs as a fully containerized dev stack (postgres, valkey, mailpit,
+rustfs, Traefik-routed app modules): no published ports, everything goes
+through Traefik on the external `proxynet` network.
+
+```sh
+docker network create proxynet   # one-time, shared across projects
+cp .env.example .env             # set USER_ID/GROUP_ID to `id -u`/`id -g`
+mise run setup                   # install JS deps (TypeSpec compiler)
+mise run generate                # tsp compile + oapi-codegen + go build
+mise run dev                      # build + start the full stack
+```
+
+After a code change, no image rebuild is needed: the source is bind-mounted:
+
+```sh
+mise run restart               # or: docker compose restart <service>
+```
+
+To follow logs, use `mise run logs` (alias `log`): it shows only the app
+module containers, not the backing services (postgres, valkey, mailpit,
+rustfs). Pass service names to narrow further, e.g. `mise run logs auth chat`;
+use `mise run logs:all` to include the backing services too.
+
+Modules are reachable at `http://${APP_HOST}/api/v1/<module>/...`; the mailpit
+UI at `http://${MAILPIT_HOST}`; the rustfs console at
+`http://${RUSTFS_CONSOLE_HOST}`. Escape hatch for a one-off psql session:
+`docker compose exec postgres psql -U $DB_USER`.
+
+## Adding things
+
+```sh
+go tool gpsystem new module <name>              # new module (api surface)
+go tool gpsystem add surface <module> <surface> # add a surface (parallel HTTP bundle)
+
+go tool gpsystem add handler <module> <surface> <operation> --method GET --path "/things/{id}"
+```
+
+The API contract lives in `spec/typespec/` (TypeSpec). `mise run generate`
+turns it into OpenAPI (`api/openapi/`) and strict chi server code
+(`internal/modules/*/.../gen/`). Never edit `gen/` output by hand.

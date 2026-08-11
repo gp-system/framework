@@ -1,0 +1,32 @@
+package notifications
+
+import (
+	"testing"
+
+	kitmail "github.com/gp-system/mail"
+	"github.com/gp-system/notify"
+	notifydatabase "github.com/gp-system/notify/database"
+)
+
+func Test{{pascal .Notification}}_Via(t *testing.T) {
+	mem := kitmail.NewMemory()
+	store := notifydatabase.NewMemoryStore()
+	hub := notify.NewHub(notify.NewMailChannel(mem), notifydatabase.NewChannel(store))
+
+	r := notify.Recipient{ID: "u1", Email: "to@example.com", Name: "Test"}
+	if err := hub.Send(t.Context(), r, {{pascal .Notification}}{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(mem.Messages()) != 1 {
+		t.Fatalf("Messages() len = %d, want 1", len(mem.Messages()))
+	}
+
+	recs, err := store.List(t.Context(), r.ID, notifydatabase.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recs) != 1 {
+		t.Fatalf("List() len = %d, want 1", len(recs))
+	}
+}

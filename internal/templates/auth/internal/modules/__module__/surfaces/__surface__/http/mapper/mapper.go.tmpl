@@ -1,0 +1,47 @@
+// Package mapper converts between generated transport types and service
+// types so neither layer imports the other's models.
+package mapper
+
+import (
+	"net/http"
+
+	gen "{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/http/gen"
+	"{{.GoModule}}/internal/modules/{{.Module}}/surfaces/{{.Surface}}/service"
+)
+
+func Problem(status int, detail string) gen.Problem {
+	return gen.Problem{
+		Type:   "about:blank",
+		Title:  http.StatusText(status),
+		Status: int32(status),
+		Detail: &detail,
+	}
+}
+
+func ToUser(user service.User) gen.AuthUser {
+	roles := user.Roles
+	if roles == nil {
+		roles = []string{}
+	}
+	permissions := user.Permissions
+	if permissions == nil {
+		permissions = []string{}
+	}
+	return gen.AuthUser{
+		Id:            user.ID,
+		Name:          user.Name,
+		Email:         user.Email,
+		EmailVerified: user.EmailVerified,
+		Roles:         roles,
+		Permissions:   permissions,
+	}
+}
+
+func ToTokenPair(pair service.TokenPair) gen.TokenPair {
+	return gen.TokenPair{
+		AccessToken:  pair.AccessToken,
+		RefreshToken: pair.RefreshToken,
+		ExpiresIn:    pair.ExpiresIn,
+		User:         ToUser(pair.User),
+	}
+}

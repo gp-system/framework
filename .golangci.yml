@@ -1,0 +1,31 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - misspell
+    - revive
+    - unconvert
+    - unparam
+    - copyloopvar
+    - errorlint
+    - nilerr
+  settings:
+    revive:
+      rules:
+        - name: exported
+    errcheck:
+      # Close() on a resource being torn down (test cleanup, defer) and
+      # Fprint*'s write-error to an already-failing/CLI stream aren't
+      # actionable: checking them would just add noise.
+      exclude-functions:
+        - (io.Closer).Close
+        - (*database/sql.Rows).Close
+        - (net.Listener).Close
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Fprint
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

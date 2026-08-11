@@ -1,0 +1,12 @@
+package jobs
+
+import (
+	{{.Module}}surfaces "{{.GoModule}}/internal/modules/{{.Module}}/surfaces"
+
+	"github.com/gp-system/events/scheduler"
+	// gpsystem:job-imports
+)
+
+func Register(sched *scheduler.Schedule, deps {{.Module}}surfaces.Dependencies) {
+	// gpsystem:jobs
+}

@@ -1,0 +1,77 @@
+import "@typespec/http";
+import "@typespec/openapi";
+
+import "../../shared/errors.tsp";
+import "../../shared/paginator.tsp";
+import "./models/{{.Surface}}.tsp";
+
+using Http;
+using OpenAPI;
+
+@service(#{ title: "{{.Project}} {{.Module}} {{.Surface}}" })
+@server("/api/v1{{.BasePath}}", "{{.Module}} {{.Surface}} base path")
+namespace {{.Namespace}};
+
+@tag("{{.Module}}")
+interface {{pascal .Module}}{{pascal .Surface}} {
+  @post
+  @route("/register")
+  @operationId("Register")
+  @summary("Register a new user with email + password; sends an email verification link")
+  register(@body body: RegisterPayload): Created<AuthUser> | Conflict | UnprocessableEntity;
+
+  @post
+  @route("/verify-email")
+  @operationId("VerifyEmail")
+  @summary("Verify a user's email address using the token sent at registration")
+  verifyEmail(@body body: VerifyEmailPayload): NoContent | Unauthorized | UnprocessableEntity;
+
+  @post
+  @route("/login")
+  @operationId("Login")
+  @summary("Exchange email + password for a token pair")
+  login(@body body: LoginPayload): TokenPair | Unauthorized | Forbidden | UnprocessableEntity;
+
+  @post
+  @route("/refresh")
+  @operationId("Refresh")
+  @summary("Rotate a refresh token into a new token pair")
+  refresh(@body body: RefreshTokenPayload): TokenPair | Unauthorized | UnprocessableEntity;
+
+  @post
+  @route("/logout")
+  @operationId("Logout")
+  @summary("Revoke a refresh token")
+  logout(@body body: RefreshTokenPayload): NoContent | UnprocessableEntity;
+
+  @post
+  @route("/password/forgot")
+  @operationId("ForgotPassword")
+  @summary("Request a password reset email; always no-content, whether or not the email is registered")
+  forgotPassword(@body body: ForgotPasswordPayload): NoContent | UnprocessableEntity;
+
+  @post
+  @route("/password/reset")
+  @operationId("ResetPassword")
+  @summary("Reset a password using the token sent by ForgotPassword")
+  resetPassword(@body body: ResetPasswordPayload): NoContent | Unauthorized | UnprocessableEntity;
+
+  @get
+  @route("/social/{provider}")
+  @operationId("SocialBegin")
+  @summary("Redirect to the named provider's OAuth consent screen")
+  socialBegin(@path provider: string): SocialBeginResponse | NotFound;
+
+  @get
+  @route("/social/{provider}/callback")
+  @operationId("SocialCallback")
+  @summary("Complete a social login via its query-string callback (Discord, Google, Facebook, ...)")
+  socialCallback(@path provider: string, ...SocialCallbackQuery): TokenPair | Unauthorized | NotFound;
+
+  @post
+  @route("/social/{provider}/callback")
+  @operationId("SocialCallbackForm")
+  @summary("Complete a social login via its form_post callback (Apple)")
+  socialCallbackForm(@path provider: string, @body body: SocialCallbackForm): TokenPair | Unauthorized | NotFound;
+  // gpsystem:operations
+}

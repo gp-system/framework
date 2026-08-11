@@ -1,0 +1,17 @@
+-- +goose Up
+-- +goose StatementBegin
+CREATE TABLE roles (
+    id          SERIAL PRIMARY KEY,
+    name        VARCHAR(50) NOT NULL UNIQUE,
+    description TEXT NOT NULL DEFAULT ''
+);
+
+INSERT INTO roles (name, description) VALUES
+    ('user', 'Default role granted at registration'),
+    ('admin', 'Full administrative access');
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+DROP TABLE IF EXISTS roles;
+-- +goose StatementEnd

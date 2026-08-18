@@ -3,7 +3,7 @@
   "private": true,
   "description": "Dev-only npm dependencies for commit linting (commitlint)",
   "devDependencies": {
-    "@commitlint/cli": "^21.2.1",
+    "@commitlint/cli": "^21.2.2",
     "@commitlint/config-conventional": "^21.2.0"
   }
 }
